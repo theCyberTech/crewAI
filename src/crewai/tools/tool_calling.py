@@ -19,3 +19,4 @@ class InstructorToolCalling(PydanticBaseModel):
     arguments: Optional[Dict[str, Any]] = PydanticField(
         ..., description="A dictinary of arguments to be passed to the tool."
     )
+  

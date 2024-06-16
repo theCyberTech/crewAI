@@ -1,6 +1,7 @@
 import subprocess
 
 import click
+from security import safe_command
 
 
 def train_crew(n_iterations: int) -> None:
@@ -16,7 +17,7 @@ def train_crew(n_iterations: int) -> None:
         if n_iterations <= 0:
             raise ValueError("The number of iterations must be a positive integer.")
 
-        result = subprocess.run(command, capture_output=False, text=True, check=True)
+        result = safe_command.run(subprocess.run, command, capture_output=False, text=True, check=True)
 
         if result.stderr:
             click.echo(result.stderr, err=True)

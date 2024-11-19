@@ -1,6 +1,7 @@
 import subprocess
 
 import click
+from security import safe_command
 
 
 def install_crew(proxy_options: list[str]) -> None:
@@ -9,7 +10,7 @@ def install_crew(proxy_options: list[str]) -> None:
     """
     try:
         command = ["uv", "sync"] + proxy_options
-        subprocess.run(command, check=True, capture_output=False, text=True)
+        safe_command.run(subprocess.run, command, check=True, capture_output=False, text=True)
 
     except subprocess.CalledProcessError as e:
         click.echo(f"An error occurred while running the crew: {e}", err=True)

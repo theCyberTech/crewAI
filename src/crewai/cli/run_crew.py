@@ -4,6 +4,7 @@ import click
 from packaging import version
 
 from crewai.cli.utils import get_crewai_version, read_toml
+from security import safe_command
 
 
 def run_crew() -> None:
@@ -27,7 +28,7 @@ def run_crew() -> None:
         print()
 
     try:
-        subprocess.run(command, capture_output=False, text=True, check=True)
+        safe_command.run(subprocess.run, command, capture_output=False, text=True, check=True)
 
     except subprocess.CalledProcessError as e:
         click.echo(f"An error occurred while running the crew: {e}", err=True)

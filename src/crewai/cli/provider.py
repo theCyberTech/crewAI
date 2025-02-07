@@ -7,6 +7,7 @@ import click
 import requests
 
 from crewai.cli.constants import JSON_URL, MODELS, PROVIDERS
+from security import safe_requests
 
 
 def select_choice(prompt_message, choices):
@@ -164,7 +165,7 @@ def fetch_provider_data(cache_file):
     - dict or None: The fetched provider data or None if the operation fails.
     """
     try:
-        response = requests.get(JSON_URL, stream=True, timeout=60)
+        response = safe_requests.get(JSON_URL, stream=True, timeout=60)
         response.raise_for_status()
         data = download_data(response)
         with open(cache_file, "w") as f:

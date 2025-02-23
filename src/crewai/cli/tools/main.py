@@ -17,6 +17,7 @@ from crewai.cli.utils import (
     tree_copy,
     tree_find_and_replace,
 )
+from security import safe_command
 
 console = Console()
 
@@ -174,8 +175,7 @@ class ToolCommand(BaseCommand, PlusAPIMixin):
             index,
             tool_handle,
         ]
-        add_package_result = subprocess.run(
-            add_package_command,
+        add_package_result = safe_command.run(subprocess.run, add_package_command,
             capture_output=False,
             env=self._build_env_with_credentials(repository_handle),
             text=True,

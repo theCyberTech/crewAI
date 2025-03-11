@@ -1,6 +1,7 @@
 import os
 import pickle
 from datetime import datetime
+import fickling
 
 
 class FileHandler:
@@ -67,7 +68,7 @@ class PickleHandler:
 
         with open(self.file_path, "rb") as file:
             try:
-                return pickle.load(file)  # nosec
+                return fickling.load(file)  # nosec
             except EOFError:
                 return {}  # Return an empty dictionary if the file is empty or corrupted
             except Exception:

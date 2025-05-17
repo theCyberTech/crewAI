@@ -2,6 +2,7 @@ import os
 from unittest.mock import patch
 
 import pytest
+from opentelemetry import trace
 
 from crewai import Agent, Crew, Task
 from crewai.telemetry import Telemetry
@@ -33,8 +34,6 @@ def test_telemetry_enabled_by_default():
             telemetry = Telemetry()
             assert telemetry.ready is True
 
-
-from opentelemetry import trace
 
 
 @patch("crewai.telemetry.telemetry.logger.error")

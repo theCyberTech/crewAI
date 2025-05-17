@@ -43,4 +43,4 @@ def test_multimodal_agent_with_image_url():
         agent=expert_analyst
     )
 
-    crew = Crew(agents=[expert_analyst], tasks=[inspection_task])
+    _ = Crew(agents=[expert_analyst], tasks=[inspection_task])

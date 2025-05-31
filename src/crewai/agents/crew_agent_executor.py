@@ -13,6 +13,7 @@ from crewai.tools.base_tool import BaseTool
 from crewai.tools.structured_tool import CrewStructuredTool
 from crewai.tools.tool_types import ToolResult
 from crewai.utilities import I18N, Printer
+from src.crewai.security.encryption_utils import encrypt
 from crewai.utilities.agent_utils import (
     enforce_rpm_limit,
     format_message_for_llm,
@@ -226,6 +227,14 @@ class CrewAgentExecutor(CrewAgentExecutorMixin):
         # reached a final answer and helps type checking understand this transition.
         assert isinstance(formatted_answer, AgentFinish)
         self._show_logs(formatted_answer)
+
+        if self.crew and self.crew.security_config.encrypt_communication and self.crew.security_config.encryption_key:
+            try:
+                formatted_answer.output = encrypt(formatted_answer.output, self.crew.security_config.encryption_key)
+            except Exception as e:
+                self._logger.log("error", f"Failed to encrypt agent output: {e}. Proceeding with unencrypted output.")
+                # Optionally, re-raise if strict encryption is required: raise e
+
         return formatted_answer
 
     def _handle_agent_action(

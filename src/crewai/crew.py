@@ -45,6 +45,7 @@ from crewai.memory.short_term.short_term_memory import ShortTermMemory
 from crewai.memory.user.user_memory import UserMemory
 from crewai.process import Process
 from crewai.security import Fingerprint, SecurityConfig
+from src.crewai.security.encryption_utils import encrypt
 from crewai.task import Task
 from crewai.tasks.conditional_task import ConditionalTask
 from crewai.tasks.task_output import TaskOutput
@@ -878,6 +879,13 @@ class Crew(FlowTrackable, BaseModel):
                     context=context,
                     tools=cast(List[BaseTool], tools_for_task),
                 )
+                if self.security_config.encrypt_communication and self.security_config.encryption_key:
+                    try:
+                        task_output.raw = encrypt(task_output.raw, self.security_config.encryption_key)
+                    except Exception as e:
+                        self._logger.log("error", f"Failed to encrypt task output: {e}")
+                        # Decide if we should raise, or log and continue with unencrypted data
+                        # For now, logging and continuing.
                 task_outputs.append(task_output)
                 self._process_task_result(task, task_output)
                 self._store_execution_log(task, task_output, task_index, was_replayed)
@@ -1089,6 +1097,13 @@ class Crew(FlowTrackable, BaseModel):
         task_outputs: List[TaskOutput] = []
         for future_task, future, task_index in futures:
             task_output = future.result()
+            if self.security_config.encrypt_communication and self.security_config.encryption_key:
+                try:
+                    task_output.raw = encrypt(task_output.raw, self.security_config.encryption_key)
+                except Exception as e:
+                    self._logger.log("error", f"Failed to encrypt async task output: {e}")
+                    # Decide if we should raise, or log and continue with unencrypted data
+                    # For now, logging and continuing.
             task_outputs.append(task_output)
             self._process_task_result(future_task, task_output)
             self._store_execution_log(

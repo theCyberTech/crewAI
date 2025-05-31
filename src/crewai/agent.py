@@ -14,6 +14,7 @@ from crewai.lite_agent import LiteAgent, LiteAgentOutput
 from crewai.llm import BaseLLM
 from crewai.memory.contextual.contextual_memory import ContextualMemory
 from crewai.security import Fingerprint
+from src.crewai.security.encryption_utils import decrypt
 from crewai.task import Task
 from crewai.tools import BaseTool
 from crewai.tools.agent_tools.agent_tools import AgentTools
@@ -241,6 +242,22 @@ class Agent(BaseAgent):
             ValueError: If the max execution time is not a positive integer.
             RuntimeError: If the agent execution fails for other reasons.
         """
+        if self.crew and self.crew.security_config.encrypt_communication and self.crew.security_config.encryption_key and context:
+            try:
+                context = decrypt(context, self.crew.security_config.encryption_key)
+            except ValueError as e:
+                warning_message = f"Failed to decrypt context for task '{task.description}'. Proceeding with original context. Error: {e}"
+                if hasattr(self, '_logger') and self._logger:
+                    self._logger.log("warning", warning_message)
+                else:
+                    print(f"Warning: {warning_message}")
+            except Exception as e: # Catch any other unexpected decryption errors
+                warning_message = f"An unexpected error occurred during context decryption for task '{task.description}'. Proceeding with original context. Error: {e}"
+                if hasattr(self, '_logger') and self._logger:
+                    self._logger.log("warning", warning_message)
+                else:
+                    print(f"Warning: {warning_message}")
+
         if self.reasoning:
             try:
                 from crewai.utilities.reasoning_handler import AgentReasoning, AgentReasoningOutput

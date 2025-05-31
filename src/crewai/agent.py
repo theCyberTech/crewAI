@@ -14,7 +14,7 @@ from crewai.lite_agent import LiteAgent, LiteAgentOutput
 from crewai.llm import BaseLLM
 from crewai.memory.contextual.contextual_memory import ContextualMemory
 from crewai.security import Fingerprint
-from src.crewai.security.encryption_utils import decrypt
+from crewai.security.encryption_utils import decrypt
 from crewai.task import Task
 from crewai.tools import BaseTool
 from crewai.tools.agent_tools.agent_tools import AgentTools

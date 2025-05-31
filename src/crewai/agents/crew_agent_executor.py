@@ -13,7 +13,7 @@ from crewai.tools.base_tool import BaseTool
 from crewai.tools.structured_tool import CrewStructuredTool
 from crewai.tools.tool_types import ToolResult
 from crewai.utilities import I18N, Printer
-from src.crewai.security.encryption_utils import encrypt
+from crewai.security.encryption_utils import encrypt
 from crewai.utilities.agent_utils import (
     enforce_rpm_limit,
     format_message_for_llm,

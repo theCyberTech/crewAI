@@ -45,7 +45,7 @@ from crewai.memory.short_term.short_term_memory import ShortTermMemory
 from crewai.memory.user.user_memory import UserMemory
 from crewai.process import Process
 from crewai.security import Fingerprint, SecurityConfig
-from src.crewai.security.encryption_utils import encrypt
+from crewai.security.encryption_utils import encrypt
 from crewai.task import Task
 from crewai.tasks.conditional_task import ConditionalTask
 from crewai.tasks.task_output import TaskOutput

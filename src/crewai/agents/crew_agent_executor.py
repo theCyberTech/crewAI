@@ -228,12 +228,17 @@ class CrewAgentExecutor(CrewAgentExecutorMixin):
         assert isinstance(formatted_answer, AgentFinish)
         self._show_logs(formatted_answer)
 
+        self._logger.log('debug', f"CrewAgentExecutor: Output before potential encryption: {formatted_answer.output}")
         if self.crew and self.crew.security_config.encrypt_communication and self.crew.security_config.encryption_key:
             try:
-                formatted_answer.output = encrypt(formatted_answer.output, self.crew.security_config.encryption_key)
+                encrypted_output = encrypt(formatted_answer.output, self.crew.security_config.encryption_key)
+                self._logger.log('debug', f"CrewAgentExecutor: Output after encryption: {encrypted_output}")
+                formatted_answer.output = encrypted_output
             except Exception as e:
-                self._logger.log("error", f"Failed to encrypt agent output: {e}. Proceeding with unencrypted output.")
+                self._logger.log("error", f"CrewAgentExecutor: Error during output encryption: {e}. Proceeding with unencrypted output.")
                 # Optionally, re-raise if strict encryption is required: raise e
+        else:
+            self._logger.log('debug', "CrewAgentExecutor: Output encryption skipped (encryption not enabled or key missing).")
 
         return formatted_answer
 

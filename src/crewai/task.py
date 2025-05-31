@@ -417,6 +417,12 @@ class Task(BaseModel):
                 context=context,
                 tools=tools,
             )
+            log_prefix = f"Task '{self.description}': "
+            Task.logger.debug(log_prefix + f"Result from agent.execute_task: {result}")
+            if self.agent and self.agent.crew and self.agent.crew.security_config.encrypt_communication:
+                Task.logger.debug(log_prefix + "Encryption is ENABLED for this crew.")
+            else:
+                Task.logger.debug(log_prefix + "Encryption is DISABLED for this crew.")
 
             pydantic_output, json_output = self._export_output(result)
             task_output = TaskOutput(
@@ -477,14 +483,44 @@ class Task(BaseModel):
                 crew.task_callback(self.output)
 
             if self.output_file:
-                content = (
-                    json_output
-                    if json_output
-                    else (
-                        pydantic_output.model_dump_json() if pydantic_output else result
-                    )
-                )
-                self._save_file(content)
+                # Default content_for_file is the raw result from the agent
+                content_for_file = result
+                log_prefix_file = f"Task '{self.description}' (Output File): "
+
+                if self.output_json:
+                    if self.agent and self.agent.crew and self.agent.crew.security_config.encrypt_communication:
+                        # If encryption is on, 'result' (and thus content_for_file) should already be encrypted.
+                        # json_output would be None if 'result' was encrypted and unparseable by _export_output.
+                        # So, content_for_file should ideally remain 'result' (the encrypted string).
+                        content_for_file = result
+                        Task.logger.debug(log_prefix_file + f"File content for JSON output (encryption on): {content_for_file} (should be original encrypted 'result')")
+                    else:
+                        # Encryption off, use serialized JSON
+                        if json_output:
+                            content_for_file = json.dumps(json_output)
+                            Task.logger.debug(log_prefix_file + f"File content for JSON output (encryption off): {content_for_file}")
+                        elif pydantic_output: # Fallback if json_output is None but pydantic_output exists
+                            content_for_file = pydantic_output.model_dump_json()
+                            Task.logger.debug(log_prefix_file + f"File content for JSON output (pydantic fallback, encryption off): {content_for_file}")
+                        else: # Fallback to result
+                            Task.logger.debug(log_prefix_file + f"File content for JSON output (result fallback, encryption off): {content_for_file}")
+
+                elif self.output_pydantic:
+                    if self.agent and self.agent.crew and self.agent.crew.security_config.encrypt_communication:
+                        content_for_file = result
+                        Task.logger.debug(log_prefix_file + f"File content for Pydantic output (encryption on): {content_for_file} (should be original encrypted 'result')")
+                    else:
+                        # Encryption off, use serialized Pydantic
+                        if pydantic_output:
+                            content_for_file = pydantic_output.model_dump_json()
+                            Task.logger.debug(log_prefix_file + f"File content for Pydantic output (encryption off): {content_for_file}")
+                        else: # Fallback to result
+                            Task.logger.debug(log_prefix_file + f"File content for Pydantic output (result fallback, encryption off): {content_for_file}")
+                else: # No specific JSON/Pydantic output format
+                    Task.logger.debug(log_prefix_file + f"File content (raw/default): {content_for_file}")
+
+                Task.logger.debug(log_prefix_file + f"Final content_for_file before saving: {content_for_file}")
+                self._save_file(content_for_file)
             crewai_event_bus.emit(
                 self, TaskCompletedEvent(output=task_output, task=self)
             )

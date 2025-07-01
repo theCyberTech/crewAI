@@ -1,6 +1,6 @@
 from typing import Any, AsyncIterable, Dict, List, Optional
 
-from pydantic import Field, PrivateAttr
+from pydantic import ConfigDict, Field, PrivateAttr
 
 from crewai.agents.agent_adapters.base_agent_adapter import BaseAgentAdapter
 from crewai.agents.agent_adapters.langgraph.langgraph_tool_adapter import (
@@ -34,7 +34,7 @@ except ImportError:
 class LangGraphAgentAdapter(BaseAgentAdapter):
     """Adapter for LangGraph agents to work with CrewAI."""
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     _logger: Logger = PrivateAttr(default_factory=lambda: Logger())
     _tool_adapter: LangGraphToolAdapter = PrivateAttr()

@@ -22,6 +22,7 @@ except ImportError:
 
 from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     InstanceOf,
     PrivateAttr,
@@ -82,7 +83,7 @@ from crewai.utilities.tool_utils import execute_tool_and_check_finality
 class LiteAgentOutput(BaseModel):
     """Class that represents the result of a LiteAgent execution."""
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     raw: str = Field(description="Raw output of the agent", default="")
     pydantic: Optional[BaseModel] = Field(
@@ -126,7 +127,7 @@ class LiteAgent(FlowTrackable, BaseModel):
         response_format: Optional Pydantic model for structured output.
     """
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     # Core Agent Properties
     role: str = Field(description="Role of the agent")

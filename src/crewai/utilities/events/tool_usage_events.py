@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import Any, Callable, Dict, Optional
 
+from pydantic import ConfigDict
+
 from .base_events import BaseEvent
 
 
@@ -16,7 +18,7 @@ class ToolUsageEvent(BaseEvent):
     delegations: int | None = None
     agent: Optional[Any] = None
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def __init__(self, **data):
         super().__init__(**data)

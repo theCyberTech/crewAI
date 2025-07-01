@@ -1,5 +1,7 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Union
 
+from pydantic import ConfigDict
+
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from crewai.tools.base_tool import BaseTool
 from crewai.tools.structured_tool import CrewStructuredTool
@@ -19,7 +21,7 @@ class AgentExecutionStartedEvent(BaseEvent):
     task_prompt: str
     type: str = "agent_execution_started"
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -85,7 +87,7 @@ class LiteAgentExecutionStartedEvent(BaseEvent):
     messages: Union[str, List[Dict[str, str]]]
     type: str = "lite_agent_execution_started"
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class LiteAgentExecutionCompletedEvent(BaseEvent):
@@ -122,4 +124,4 @@ class AgentLogsExecutionEvent(BaseEvent):
     verbose: bool = False
     type: str = "agent_logs_execution"
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)

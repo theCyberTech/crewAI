@@ -11,7 +11,7 @@ from crewai.flow.persistence import persist
 from crewai.flow.persistence.sqlite import SQLiteFlowPersistence
 
 
-class TestState(FlowState):
+class FlowTestState(FlowState):
     """Test state model with required id field."""
 
     counter: int = 0
@@ -47,8 +47,8 @@ def test_structured_state_persistence(tmp_path):
     db_path = os.path.join(tmp_path, "test_flows.db")
     persistence = SQLiteFlowPersistence(db_path)
 
-    class StructuredFlow(Flow[TestState]):
-        initial_state = TestState
+    class StructuredFlow(Flow[FlowTestState]):
+        initial_state = FlowTestState
 
         @start()
         @persist(persistence)
@@ -73,7 +73,7 @@ def test_flow_state_restoration(tmp_path):
     persistence = SQLiteFlowPersistence(db_path)
 
     # First flow execution to create initial state
-    class RestorableFlow(Flow[TestState]):
+    class RestorableFlow(Flow[FlowTestState]):
         @start()
         @persist(persistence)
         def set_message(self):
@@ -111,7 +111,7 @@ def test_multiple_method_persistence(tmp_path):
     db_path = os.path.join(tmp_path, "test_flows.db")
     persistence = SQLiteFlowPersistence(db_path)
 
-    class MultiStepFlow(Flow[TestState]):
+    class MultiStepFlow(Flow[FlowTestState]):
         @start()
         @persist(persistence)
         def step_1(self):
@@ -141,7 +141,7 @@ def test_multiple_method_persistence(tmp_path):
     assert final_state.counter == 2
     assert final_state.message == "Step 2"
 
-    class NoPersistenceMultiStepFlow(Flow[TestState]):
+    class NoPersistenceMultiStepFlow(Flow[FlowTestState]):
         @start()
         @persist(persistence)
         def step_1(self):

@@ -1,6 +1,6 @@
 from typing import Any, List, Optional
 
-from pydantic import Field, PrivateAttr
+from pydantic import ConfigDict, Field, PrivateAttr
 
 from crewai.agents.agent_adapters.base_agent_adapter import BaseAgentAdapter
 from crewai.agents.agent_adapters.openai_agents.structured_output_converter import (
@@ -31,7 +31,7 @@ except ImportError:
 class OpenAIAgentAdapter(BaseAgentAdapter):
     """Adapter for OpenAI Assistants"""
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     _openai_agent: "OpenAIAgent" = PrivateAttr()
     _logger: Logger = PrivateAttr(default_factory=lambda: Logger())

@@ -26,6 +26,7 @@ from typing import (
 from pydantic import (
     UUID4,
     BaseModel,
+    ConfigDict,
     Field,
     PrivateAttr,
     field_validator,
@@ -158,9 +159,7 @@ class Task(BaseModel):
     end_time: Optional[datetime.datetime] = Field(
         default=None, description="End time of the task execution"
     )
-    model_config = {
-        "arbitrary_types_allowed": True
-    }
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @field_validator("guardrail")
     @classmethod

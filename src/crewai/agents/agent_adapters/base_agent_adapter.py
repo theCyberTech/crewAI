@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
-from pydantic import PrivateAttr
+from pydantic import ConfigDict, PrivateAttr
 
 from crewai.agent import BaseAgent
 from crewai.tools import BaseTool
@@ -18,7 +18,7 @@ class BaseAgentAdapter(BaseAgent, ABC):
     adapted_structured_output: bool = False
     _agent_config: Optional[Dict[str, Any]] = PrivateAttr(default=None)
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def __init__(self, agent_config: Optional[Dict[str, Any]] = None, **kwargs: Any):
         super().__init__(adapted_agent=True, **kwargs)

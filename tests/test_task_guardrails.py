@@ -46,6 +46,35 @@ def test_task_with_successful_guardrail_func():
     assert result.raw == "TEST RESULT"
 
 
+def test_guardrail_output_saved():
+    import uuid
+    from pathlib import Path
+
+    def guardrail(result: TaskOutput):
+        return (True, "corrected")
+
+    agent = Mock()
+    agent.role = "test_agent"
+    agent.execute_task.return_value = "original"
+    agent.crew = None
+
+    output_file = f"output_{uuid.uuid4()}.txt"
+
+    task = Task(
+        description="Test task",
+        expected_output="Output",
+        guardrail=guardrail,
+        output_file=output_file,
+    )
+
+    result = task.execute_sync(agent=agent)
+
+    assert result.raw == "corrected"
+    path = Path(output_file)
+    assert path.read_text() == "corrected"
+    path.unlink()
+
+
 def test_task_with_failing_guardrail():
     """Test that failing guardrail triggers retry with error context."""
 

@@ -73,8 +73,9 @@ class CrewAIEventsBus:
                     try:
                         handler(source, event)
                     except Exception as e:
+                        handler_name = getattr(handler, "__name__", repr(handler))
                         print(
-                            f"[EventBus Error] Handler '{handler.__name__}' failed for event '{event_type.__name__}': {e}"
+                            f"[EventBus Error] Handler '{handler_name}' failed for event '{event_type.__name__}': {e}"
                         )
 
         self._signal.send(source, event=event)

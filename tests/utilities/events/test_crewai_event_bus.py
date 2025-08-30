@@ -45,3 +45,23 @@ def test_event_bus_error_handling(capfd):
     out, err = capfd.readouterr()
     assert "Simulated handler failure" in out
     assert "Handler 'broken_handler' failed" in out
+
+
+def test_event_bus_error_handling_without_name(capfd):
+    class CallableHandler:
+        def __repr__(self):
+            return "ClassHandler"
+
+        def __call__(self, source, event):
+            raise ValueError("Simulated handler failure")
+
+    handler = CallableHandler()
+
+    with crewai_event_bus.scoped_handlers():
+        crewai_event_bus.register_handler(BaseEvent, handler)
+        event = TestEvent(type="test_event")
+        crewai_event_bus.emit("source_object", event)
+
+    out, err = capfd.readouterr()
+    assert "Simulated handler failure" in out
+    assert "Handler 'ClassHandler' failed" in out

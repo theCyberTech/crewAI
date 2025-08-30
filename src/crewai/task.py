@@ -501,6 +501,10 @@ class Task(BaseModel):
                 elif isinstance(guardrail_result.result, TaskOutput):
                     task_output = guardrail_result.result
 
+            result = task_output.raw
+            pydantic_output = task_output.pydantic
+            json_output = task_output.json_dict
+
             self.output = task_output
             self.end_time = datetime.datetime.now()
 

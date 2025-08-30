@@ -144,6 +144,22 @@ def test_default_values_in_schema():
     )
     assert result == "test custom 42"
 
+
+def test_invoke_calls_function_once():
+    calls = []
+
+    def test_func() -> str:
+        """A test function."""
+        calls.append(True)
+        return "done"
+
+    tool = CrewStructuredTool.from_function(func=test_func, name="test_tool")
+
+    result = tool.invoke({})
+
+    assert result == "done"
+    assert len(calls) == 1
+
 @pytest.fixture
 def custom_tool_decorator():
     from crewai.tools import tool

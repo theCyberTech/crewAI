@@ -10,7 +10,7 @@ class TestPickleHandler(unittest.TestCase):
     def setUp(self):
         # Use a unique file name for each test to avoid race conditions in parallel test execution
         unique_id = str(uuid.uuid4())
-        self.file_name = f"test_data_{unique_id}.pkl"
+        self.file_name = f"test_data_{unique_id}.json"
         self.file_path = os.path.join(os.getcwd(), self.file_name)
         self.handler = PickleHandler(self.file_name)
 
@@ -37,13 +37,17 @@ class TestPickleHandler(unittest.TestCase):
         assert loaded_data == {}
 
     def test_load_corrupted_file(self):
-        with open(self.file_path, "wb") as file:
-            file.write(b"corrupted data")
+        # Write invalid JSON to simulate corruption
+        with open(self.file_path, "w", encoding="utf-8") as file:
+            file.write("corrupted data {not valid json")
             file.flush()
             os.fsync(file.fileno())  # Ensure data is written to disk
 
-        with pytest.raises(Exception) as exc:
-            self.handler.load()
+        # Corrupted JSON files should return empty dict (graceful handling)
+        loaded_data = self.handler.load()
+        assert loaded_data == {}
 
-        assert str(exc.value) == "pickle data was truncated"
-        assert "<class '_pickle.UnpicklingError'>" == str(exc.type)
+    def test_pkl_extension_converted_to_json(self):
+        # Test that .pkl extensions are converted to .json
+        handler = PickleHandler("test_file.pkl")
+        assert handler.file_path.endswith(".json")

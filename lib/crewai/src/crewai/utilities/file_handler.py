@@ -1,7 +1,6 @@
 from datetime import datetime
 import json
 import os
-import pickle
 from typing import Any, TypedDict
 
 from typing_extensions import Unpack
@@ -123,10 +122,14 @@ class FileHandler:
 
 
 class PickleHandler:
-    """Handler for saving and loading data using pickle.
+    """Handler for saving and loading data using JSON.
+
+    Note: This class was renamed from pickle to JSON serialization for security.
+    Pickle deserialization can execute arbitrary code from malicious files.
+    The class name is retained for backward compatibility.
 
     Attributes:
-        file_path: The path to the pickle file.
+        file_path: The path to the JSON file.
     """
 
     def __init__(self, file_name: str) -> None:
@@ -137,8 +140,11 @@ class PickleHandler:
         Args:
             file_name: The name of the file for saving and loading data.
         """
-        if not file_name.endswith(".pkl"):
-            file_name += ".pkl"
+        # Support both .pkl and .json extensions for backward compatibility
+        if file_name.endswith(".pkl"):
+            file_name = file_name[:-4] + ".json"
+        elif not file_name.endswith(".json"):
+            file_name += ".json"
 
         self.file_path = os.path.join(os.getcwd(), file_name)
 
@@ -147,17 +153,16 @@ class PickleHandler:
         self.save({})
 
     def save(self, data: Any) -> None:
-        """
-        Save the data to the specified file using pickle.
+        """Save the data to the specified file using JSON.
 
         Args:
-          data: The data to be saved to the file.
+            data: The data to be saved to the file. Must be JSON-serializable.
         """
-        with open(self.file_path, "wb") as f:
-            pickle.dump(obj=data, file=f)
+        with open(self.file_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
 
     def load(self) -> Any:
-        """Load the data from the specified file using pickle.
+        """Load the data from the specified file using JSON.
 
         Returns:
             The data loaded from the file.
@@ -165,10 +170,10 @@ class PickleHandler:
         if not os.path.exists(self.file_path) or os.path.getsize(self.file_path) == 0:
             return {}  # Return an empty dictionary if the file does not exist or is empty
 
-        with open(self.file_path, "rb") as file:
+        with open(self.file_path, "r", encoding="utf-8") as file:
             try:
-                return pickle.load(file)  # noqa: S301
-            except EOFError:
-                return {}  # Return an empty dictionary if the file is empty or corrupted
+                return json.load(file)
+            except json.JSONDecodeError:
+                return {}  # Return an empty dictionary if the file is corrupted
             except Exception:
                 raise  # Raise any other exceptions that occur during loading

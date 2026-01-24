@@ -7,11 +7,15 @@ from crewai.utilities.training_handler import CrewTrainingHandler
 
 class InternalCrewTrainingHandler(unittest.TestCase):
     def setUp(self):
-        self.temp_file = tempfile.NamedTemporaryFile(suffix=".pkl", delete=False)
+        self.temp_file = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
         self.temp_file.close()
         self.handler = CrewTrainingHandler(self.temp_file.name)
 
     def tearDown(self):
+        # Clean up the actual file path used by the handler
+        if os.path.exists(self.handler.file_path):
+            os.remove(self.handler.file_path)
+        # Also clean up the original temp file if it exists
         if os.path.exists(self.temp_file.name):
             os.remove(self.temp_file.name)
         del self.handler
@@ -37,12 +41,13 @@ class InternalCrewTrainingHandler(unittest.TestCase):
         self.handler.append(train_iteration, agent_id, new_data)
 
         # Assert that the new data is appended correctly to the existing agent
+        # Note: JSON converts integer keys to strings
         data = self.handler.load()
         assert agent_id in data
-        assert initial_iteration in data[agent_id]
-        assert train_iteration in data[agent_id]
-        assert data[agent_id][initial_iteration] == initial_data
-        assert data[agent_id][train_iteration] == new_data
+        assert str(initial_iteration) in data[agent_id]
+        assert str(train_iteration) in data[agent_id]
+        assert data[agent_id][str(initial_iteration)] == initial_data
+        assert data[agent_id][str(train_iteration)] == new_data
 
     def test_append_new_agent(self):
         train_iteration = 1
@@ -51,5 +56,6 @@ class InternalCrewTrainingHandler(unittest.TestCase):
         self.handler.append(train_iteration, agent_id, new_data)
 
         # Assert that the new agent and data are appended correctly
+        # Note: JSON converts integer keys to strings
         data = self.handler.load()
-        assert data[agent_id][train_iteration] == new_data
+        assert data[agent_id][str(train_iteration)] == new_data

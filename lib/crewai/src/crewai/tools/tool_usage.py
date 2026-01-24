@@ -281,7 +281,7 @@ class ToolUsage:
                         input_str = str(calling.arguments)
 
                 result = self.tools_handler.cache.read(
-                    tool=sanitize_tool_name(calling.tool_name), input=input_str
+                    tool=sanitize_tool_name(calling.tool_name), tool_input=input_str
                 )  # type: ignore
                 from_cache = result is not None
 
@@ -507,7 +507,7 @@ class ToolUsage:
                         input_str = str(calling.arguments)
 
                 result = self.tools_handler.cache.read(
-                    tool=sanitize_tool_name(calling.tool_name), input=input_str
+                    tool=sanitize_tool_name(calling.tool_name), tool_input=input_str
                 )  # type: ignore
                 from_cache = result is not None
 

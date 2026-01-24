@@ -724,7 +724,7 @@ class CrewAgentExecutor(CrewAgentExecutorMixin):
         input_str = json.dumps(args_dict) if args_dict else ""
         if self.tools_handler and self.tools_handler.cache:
             cached_result = self.tools_handler.cache.read(
-                tool=func_name, input=input_str
+                tool=func_name, tool_input=input_str
             )
             if cached_result is not None:
                 result = (
@@ -770,7 +770,7 @@ class CrewAgentExecutor(CrewAgentExecutorMixin):
                             )
                         if should_cache:
                             self.tools_handler.cache.add(
-                                tool=func_name, input=input_str, output=raw_result
+                                tool=func_name, tool_input=input_str, output=raw_result
                             )
 
                     # Convert to string for message

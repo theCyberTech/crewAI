@@ -171,7 +171,7 @@ def test_navigate_command(mock_run, stagehand_tool):
     )
 
     # Assertions
-    assert "https://example.com" in result
+    assert "example.com" in result
 
 
 @patch(

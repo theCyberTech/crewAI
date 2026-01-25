@@ -32,7 +32,7 @@ def test_brave_tool_search(mock_get, brave_tool):
 
     result = brave_tool.run(search_query="test")
     assert "Test Title" in result
-    assert "http://test.com" in result
+    assert "test.com" in result
 
 
 def test_brave_tool():

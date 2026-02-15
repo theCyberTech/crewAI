@@ -104,6 +104,9 @@ class ToolUsage:
         self.tools_names = get_tool_names(tools)
         self.tools_handler = tools_handler
         self.tools = tools
+        self._tool_lookup: dict[str, CrewStructuredTool] = {
+            sanitize_tool_name(t.name): t for t in tools
+        }
         self.task = task
         self.action = action
         self.function_calling_llm = function_calling_llm
@@ -736,20 +739,21 @@ class ToolUsage:
 
     def _select_tool(self, tool_name: str) -> Any:
         sanitized_input = sanitize_tool_name(tool_name)
-        order_tools = sorted(
-            self.tools,
-            key=lambda tool: SequenceMatcher(
-                None, sanitize_tool_name(tool.name), sanitized_input
-            ).ratio(),
-            reverse=True,
-        )
-        for tool in order_tools:
-            sanitized_tool = sanitize_tool_name(tool.name)
-            if (
-                sanitized_tool == sanitized_input
-                or SequenceMatcher(None, sanitized_tool, sanitized_input).ratio() > 0.85
-            ):
-                return tool
+
+        exact = self._tool_lookup.get(sanitized_input)
+        if exact is not None:
+            return exact
+
+        best_tool = None
+        best_ratio = 0.0
+        for sanitized, tool in self._tool_lookup.items():
+            ratio = SequenceMatcher(None, sanitized, sanitized_input).ratio()
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_tool = tool
+
+        if best_tool is not None and best_ratio > 0.85:
+            return best_tool
         if self.task:
             self.task.increment_tools_errors()
         tool_selection_data: dict[str, Any] = {

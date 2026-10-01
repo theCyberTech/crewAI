@@ -100,6 +100,7 @@ if TYPE_CHECKING:
         get_supported_openai_params,
     )
     from litellm.types.utils import (
+        ChatCompletionDeltaCustomToolCall,
         ChatCompletionDeltaToolCall,
         Choices,
         Delta as LiteLLMDelta,
@@ -1566,7 +1567,13 @@ class LLM(BaseLLM):
                             elif isinstance(delta, LiteLLMDelta):
                                 chunk_content = delta.content
 
-                            tool_calls: list[ChatCompletionDeltaToolCall] | None = None
+                            tool_calls: (
+                                list[
+                                    ChatCompletionDeltaToolCall
+                                    | ChatCompletionDeltaCustomToolCall
+                                ]
+                                | None
+                            ) = None
                             if isinstance(delta, dict):
                                 tool_calls = delta.get("tool_calls")
                             elif isinstance(delta, LiteLLMDelta):
@@ -1574,6 +1581,10 @@ class LLM(BaseLLM):
 
                             if tool_calls:
                                 for tool_call in tool_calls:
+                                    if not isinstance(
+                                        tool_call, ChatCompletionDeltaToolCall
+                                    ):
+                                        continue
                                     idx = tool_call.index
                                     if tool_call.function:
                                         if tool_call.function.name:

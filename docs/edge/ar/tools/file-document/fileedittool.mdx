@@ -1,0 +1,94 @@
+---
+title: تحرير الملفات
+description: تقوم أداة `FileEditTool` بتحرير الملفات الموجودة عن طريق استبدال نص مطابق تمامًا.
+icon: pen-to-square
+mode: "wide"
+---
+
+# `FileEditTool`
+
+## الوصف
+
+أداة `FileEditTool` هي أحد مكونات حزمة crewai_tools، وتقوم بتحرير ملف نصي موجود عن طريق استبدال نص مطابق تمامًا.
+بدلًا من إعادة كتابة الملف بالكامل، يحدد الوكيل المقطع المراد تغييره والنص الذي يحل محله، مما يجعل التعديلات الصغيرة والمحددة على الشيفرة والإعدادات والمستندات منخفضة التكلفة وآمنة.
+يجب أن يتطابق المقطع مرة واحدة بالضبط ما لم يتم تعيين `replace_all`، حتى لا يؤدي تطابق غامض إلى تحرير المكان الخطأ. تُحفظ نهايات الأسطر كما هي على القرص، وتُقرأ الملفات وتُكتب بترميز UTF-8 افتراضيًا.
+
+## التثبيت
+
+ثبّت حزمة crewai_tools لاستخدام `FileEditTool` في مشاريعك:
+
+```shell
+pip install 'crewai[tools]'
+```
+
+## مثال
+
+للبدء باستخدام `FileEditTool`:
+
+```python Code
+from crewai_tools import FileEditTool
+
+# Initialize the tool
+file_edit_tool = FileEditTool()
+
+# Replace a single, unique snippet
+result = file_edit_tool.run(
+    file_path='config.yaml',
+    old_string='debug: false',
+    new_string='debug: true',
+)
+print(result)
+
+# Rename every occurrence of an identifier
+result = file_edit_tool.run(
+    file_path='app.py',
+    old_string='old_name',
+    new_string='new_name',
+    replace_all=True,
+)
+```
+
+استخدمها مع `FileReadTool` حتى يتمكن الوكيل من قراءة الملف أولًا ونسخ النص الدقيق الذي يريد استبداله:
+
+```python Code
+from crewai import Agent
+from crewai_tools import FileEditTool, FileReadTool
+
+editor = Agent(
+    role="Code Editor",
+    goal="Make precise, minimal edits to project files",
+    backstory="You read a file before changing it and only touch the lines that need to change.",
+    tools=[FileReadTool(), FileEditTool()],
+)
+```
+
+## المعاملات
+
+يقدّم الوكيل هذه المعاملات أثناء التشغيل:
+
+- `file_path`: مسار الملف الموجود المراد تحريره. يُحل المسار النسبي داخل الدليل المسموح به للأداة.
+- `old_string`: النص الدقيق المراد استبداله، بما في ذلك المسافات والإزاحة. يجب أن يظهر مرة واحدة بالضبط ما لم تكن قيمة `replace_all` صحيحة؛ أضف الأسطر المحيطة لجعله فريدًا.
+- `new_string`: النص البديل. يجب أن يختلف عن `old_string`. مرّر نصًا فارغًا لحذف `old_string`.
+- `replace_all` (اختياري): ما إذا كان يجب استبدال جميع التكرارات. يقبل `true`/`false` (وأيضًا `yes`/`no` و`on`/`off` و`1`/`0`). القيمة الافتراضية هي `false`، والتي تُبلغ عن خطأ عندما يظهر `old_string` أكثر من مرة.
+
+تحدد هذه المعاملات عند إنشاء الأداة:
+
+- `base_dir` (اختياري): الدليل الذي يجب أن تبقى التعديلات داخله. القيمة الافتراضية هي دليل العمل الحالي.
+- `encoding` (اختياري): ترميز النص المستخدم لقراءة الملف وكتابته. القيمة الافتراضية هي `utf-8`.
+
+تحرر الأداة الملفات الموجودة فقط. استخدم [`FileWriterTool`](/ar/tools/file-document/filewritetool) لإنشاء ملف أو استبدال محتواه بالكامل.
+
+## المسارات المسموح بها
+
+نظرًا لأن مسار الملف يختاره عادةً نموذج LLM أثناء التشغيل، فإن التعديلات تقتصر على بيئة معزولة: يجب أن يكون `file_path` بعد حله داخل `base_dir`، الذي يكون افتراضيًا دليل العمل الحالي. تُحل مقاطع `..` والمسارات المطلقة والروابط الرمزية قبل التحقق، لذا لا يمكن استخدامها للخروج.
+
+للسماح للوكيل بالتحرير خارج دليل العمل، وجّه `base_dir` إلى الشجرة المستهدفة:
+
+```python Code
+# The agent may edit anywhere under /srv/app, and nowhere outside it
+file_edit_tool = FileEditTool(base_dir='/srv/app')
+```
+
+<Note>
+    يؤدي تعيين `CREWAI_TOOLS_ALLOW_UNSAFE_PATHS=true` إلى تعطيل التحقق من المسارات، لكنه ينطبق على مستوى العملية بالكامل وعلى كل أدوات crewai-tools، بما في ذلك حماية SSRF في الأدوات التي تجلب عناوين URL، لذا يُفضّل استخدام `base_dir`.
+</Note>

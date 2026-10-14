@@ -34,8 +34,16 @@ def test_fetch_arxiv_data(mock_urlopen, tool):
     mock_urlopen.return_value.__enter__.return_value = mock_response
 
     results = tool.fetch_arxiv_data("transformer", 1)
-    assert isinstance(results, list)
-    assert results[0]["title"] == "Sample Paper"
+    assert results == [
+        {
+            "arxiv_id": "1234_5678",
+            "title": "Sample Paper",
+            "summary": "This is a summary of the sample paper.",
+            "authors": ["John Doe"],
+            "published_date": "2022-01-01T00:00:00Z",
+            "pdf_url": "http://arxiv.org/pdf/1234.5678.pdf",
+        }
+    ]
 
 
 @patch("urllib.request.urlopen", side_effect=urllib.error.URLError("Timeout"))
@@ -48,7 +56,9 @@ def test_fetch_arxiv_data_network_error(mock_urlopen, tool):
 def test_download_pdf_success(mock_urlretrieve):
     tool = ArxivPaperTool()
     tool.download_pdf("http://arxiv.org/pdf/1234.5678.pdf", Path("test.pdf"))
-    mock_urlretrieve.assert_called_once()
+    mock_urlretrieve.assert_called_once_with(
+        "http://arxiv.org/pdf/1234.5678.pdf", "test.pdf"
+    )
 
 
 @patch("urllib.request.urlretrieve", side_effect=OSError("Permission denied"))
@@ -71,7 +81,10 @@ def test_run_with_download(mock_urlretrieve, mock_urlopen):
     tool = ArxivPaperTool(download_pdfs=True)
     output = tool._run("transformer", 1)
     assert "Title: Sample Paper" in output
-    mock_urlretrieve.assert_called_once()
+    mock_urlretrieve.assert_called_once_with(
+        "http://arxiv.org/pdf/1234.5678.pdf",
+        str(Path("./arxiv_pdfs").resolve() / "1234_5678.pdf"),
+    )
 
 
 @patch("urllib.request.urlopen")
@@ -90,7 +103,7 @@ def test_run_no_download(mock_urlopen):
 def test_validate_save_path_creates_directory(mock_mkdir):
     path = ArxivPaperTool._validate_save_path("new_folder")
     mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
-    assert isinstance(path, Path)
+    assert path == Path("new_folder").resolve()
 
 
 @patch("urllib.request.urlopen")

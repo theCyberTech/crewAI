@@ -69,7 +69,7 @@ class TestReadOnlyMode:
 
     def test_read_only_cte_allowed(self):
         tool = _make_tool()
-        tool._validate_query("WITH cte AS (SELECT 1) SELECT * FROM cte")
+        assert tool._run("WITH cte AS (SELECT 1) SELECT * FROM cte") == [{"1": 1}]
 
     def test_show_allowed(self):
         tool = _make_tool()
@@ -183,8 +183,9 @@ class TestNoCommitForReadOnly:
                 return_value=mock_session_cls,
             ),
         ):
-            tool.execute_sql("SELECT 1")
+            result = tool.execute_sql("SELECT 1")
 
+        assert result == [{"val": 1}]
         mock_session.commit.assert_not_called()
 
     def test_write_with_dml_enabled_does_commit(self):
@@ -204,9 +205,10 @@ class TestNoCommitForReadOnly:
                 return_value=mock_session_cls,
             ),
         ):
-            tool.execute_sql("INSERT INTO t VALUES (1)")
+            result = tool.execute_sql("INSERT INTO t VALUES (1)")
 
-        mock_session.commit.assert_called_once()
+        assert result == "Query INSERT INTO t VALUES (1) executed successfully"
+        mock_session.commit.assert_called_once_with()
 
 
 class TestEnvVarEscapeHatch:
@@ -270,8 +272,7 @@ class TestSemicolonInjection:
     def test_trailing_semicolon_allowed_single_statement(self):
         """A single statement with a trailing semicolon should pass."""
         tool = _make_tool(allow_dml=False)
-        # Should not raise — the part after the semicolon is empty
-        tool._validate_query("SELECT 1;")
+        assert tool._run("SELECT 1;") == [{"1": 1}]
 
     def test_multi_statement_allowed_when_dml_enabled(self):
         """Multiple statements are permitted when allow_dml=True."""
@@ -436,9 +437,10 @@ class TestMultiStatementCommit:
                 return_value=mock_session_cls,
             ),
         ):
-            tool.execute_sql("SELECT 1; INSERT INTO t VALUES (1)")
+            result = tool.execute_sql("SELECT 1; INSERT INTO t VALUES (1)")
 
-        mock_session.commit.assert_called_once()
+        assert result == "Query SELECT 1; INSERT INTO t VALUES (1) executed successfully"
+        mock_session.commit.assert_called_once_with()
 
     def test_select_only_multi_statement_does_not_commit(self):
         """Two SELECTs must not trigger a commit even when allow_dml=True."""
@@ -459,7 +461,10 @@ class TestMultiStatementCommit:
                 return_value=mock_session_cls,
             ),
         ):
-            tool.execute_sql("SELECT 1; SELECT 2")
+            result = tool.execute_sql("SELECT 1; SELECT 2")
+
+        assert result == [{"v": 1}]
+        mock_session.commit.assert_not_called()
 
     def test_writable_cte_triggers_commit(self):
         """WITH d AS (DELETE ...) must trigger commit when allow_dml=True."""
@@ -480,10 +485,11 @@ class TestMultiStatementCommit:
                 return_value=mock_session_cls,
             ),
         ):
-            tool.execute_sql(
+            result = tool.execute_sql(
                 "WITH d AS (DELETE FROM users RETURNING *) SELECT * FROM d"
             )
-            mock_session.commit.assert_called_once()
+        assert result == [{"id": 1}]
+        mock_session.commit.assert_called_once_with()
 
 
 class TestExtendedWriteCommands:
@@ -565,8 +571,9 @@ class TestExplainAnalyzeCommit:
                 return_value=mock_session_cls,
             ),
         ):
-            tool.execute_sql("EXPLAIN ANALYZE DELETE FROM users")
-            mock_session.commit.assert_called_once()
+            result = tool.execute_sql("EXPLAIN ANALYZE DELETE FROM users")
+        assert result == [{"QUERY PLAN": "Delete on users"}]
+        mock_session.commit.assert_called_once_with()
 
 
 # AS( inside string literals must not confuse CTE detection

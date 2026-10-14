@@ -460,12 +460,34 @@ def test_search_query_backward_compat(mock_get, web_tool):
 @patch("crewai_tools.tools.brave_search_tool.base.requests.get")
 @patch("crewai_tools.tools.brave_search_tool.base._save_results_to_file")
 def test_save_file_called_when_enabled(mock_save, mock_get):
-    mock_get.return_value = _mock_response(json_data={"results": []})
+    mock_get.return_value = _mock_response(
+        json_data={
+            "web": {
+                "results": [
+                    {
+                        "title": "CrewAI",
+                        "url": "https://crewai.com",
+                        "description": "Agents",
+                    }
+                ]
+            }
+        }
+    )
 
     tool = BraveWebSearchTool(save_file=True)
     tool._run(query="test")
 
-    mock_save.assert_called_once()
+    mock_save.assert_called_once_with(
+        "[\n"
+        "  {\n"
+        '    "url": "https://crewai.com",\n'
+        '    "title": "CrewAI",\n'
+        '    "snippets": [\n'
+        '      "Agents"\n'
+        "    ]\n"
+        "  }\n"
+        "]"
+    )
 
 
 # Error Handling
@@ -656,10 +678,11 @@ def test_rate_limit_skips_sleep_when_enough_time_passed(mock_time, mock_get, web
 
 @patch("crewai_tools.tools.brave_search_tool.base.requests.get")
 @patch("crewai_tools.tools.brave_search_tool.base.time")
-def test_rate_limit_disabled_when_zero(mock_time, mock_get, web_tool):
+def test_rate_limit_disabled_when_zero(mock_time, mock_get):
     """requests_per_second=0 disables rate limiting entirely."""
     mock_get.return_value = _mock_response(json_data={})
 
+    web_tool = BraveWebSearchTool(requests_per_second=0)
     web_tool._last_request_time = 100.0
     mock_time.time.return_value = 100.0  # same instant
 

@@ -63,4 +63,10 @@ def test_valid_azure_config_works(mock_create_client: Mock) -> None:
     }
 
     tool = MyTool(config=config)
-    assert tool is not None
+
+    embedding_function = tool.adapter.config.embedding_function
+    assert embedding_function.api_type == "azure"
+    assert embedding_function.api_base == "http://localhost:4000/v1"
+    assert embedding_function.api_version == "2024-02-01"
+    assert embedding_function.deployment_id == "text-embedding-3-small"
+    mock_create_client.assert_called_once_with(tool.adapter.config)

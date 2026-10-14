@@ -3,6 +3,7 @@ from tempfile import TemporaryDirectory
 from typing import cast
 from unittest.mock import MagicMock, Mock, patch
 
+from crewai.rag.qdrant.config import QdrantConfig
 import pytest
 
 from crewai_tools.adapters.crewai_rag_adapter import CrewAIRagAdapter
@@ -307,5 +308,7 @@ def test_rag_tool_config_with_qdrant_and_azure_embeddings(
 
         tool = MyTool(config=config)
 
-        assert tool.adapter is not None
-        assert isinstance(tool.adapter, CrewAIRagAdapter)
+        adapter = cast(CrewAIRagAdapter, tool.adapter)
+        assert isinstance(adapter.config, QdrantConfig)
+        assert adapter.config.embedding_function is mock_embedding_func
+        mock_create_client.assert_called_once_with(adapter.config)

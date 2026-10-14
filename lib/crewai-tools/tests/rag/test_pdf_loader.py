@@ -1,3 +1,4 @@
+import hashlib
 import tempfile
 from unittest.mock import patch
 
@@ -70,9 +71,10 @@ class TestPDFLoader:
             patch("tempfile.NamedTemporaryFile") as mock_tempfile,
         ):
             fetch.return_value = fetch_result(build_pdf())
-            PDFLoader().load(SourceContent("https://example.com/report.pdf"))
+            result = PDFLoader().load(SourceContent("https://example.com/report.pdf"))
 
         mock_tempfile.assert_not_called()
+        assert result.content == "Page 1:\nQuarterly revenue was 42\n"
 
     def test_load_pdf_from_url_is_size_bounded(self):
         """The download is capped, since the body is held in memory."""
@@ -153,4 +155,8 @@ class TestPDFLoader:
 
             loader = PDFLoader()
             source = SourceContent(f.name)
-            assert loader.load(source).doc_id == loader.load(source).doc_id
+            expected_id = hashlib.sha256(
+                (f.name + "Page 1:\nQuarterly revenue was 42\n").encode("utf-8")
+            ).hexdigest()
+            assert loader.load(source).doc_id == expected_id
+            assert loader.load(source).doc_id == expected_id

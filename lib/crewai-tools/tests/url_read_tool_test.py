@@ -583,6 +583,7 @@ def test_declared_content_type_wins_over_the_body_bytes():
         )
         result = tool.run(url=PRESIGNED_URL)
 
+    assert result.startswith("%PDF-1.7\n")
     assert "Page 1:" not in result
     assert "Should not be extracted" not in result
 

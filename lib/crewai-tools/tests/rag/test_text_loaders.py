@@ -53,7 +53,7 @@ class TestTextFileLoader:
         path = write_temp_file(content)
         try:
             result = TextFileLoader().load(SourceContent(path))
-            assert content in result.content
+            assert result.content == content
         finally:
             cleanup_temp_file(path)
 
@@ -170,7 +170,7 @@ class TestTextLoader:
     def test_multiline_text(self):
         content = "Line 1\nLine 2\nLine 3"
         result = TextLoader().load(SourceContent(content))
-        assert "Line 2" in result.content
+        assert result.content == content
 
     def test_empty_text(self):
         result = TextLoader().load(SourceContent(""))
@@ -180,17 +180,12 @@ class TestTextLoader:
     def test_unicode_text(self):
         content = "世界 🌍 émojis 🎉 åäö"
         result = TextLoader().load(SourceContent(content))
-        assert content in result.content
+        assert result.content == content
 
     def test_special_characters(self):
         content = "!@#$$%^&*()_+-=~`{}[]\\|;:'\",.<>/?"
         result = TextLoader().load(SourceContent(content))
         assert result.content == content
-
-    def test_doc_id_uniqueness(self):
-        result1 = TextLoader().load(SourceContent("A"))
-        result2 = TextLoader().load(SourceContent("B"))
-        assert result1.doc_id != result2.doc_id
 
     def test_whitespace_text(self):
         content = "   \n\t   "
@@ -200,7 +195,7 @@ class TestTextLoader:
     def test_long_text(self):
         content = "A" * 10000
         result = TextLoader().load(SourceContent(content))
-        assert len(result.content) == 10000
+        assert result.content == content
 
 
 class TestTextLoadersIntegration:

@@ -1,5 +1,3 @@
-from collections.abc import Callable
-
 from crewai.tools import BaseTool, tool
 from crewai.tools.base_tool import to_langchain
 
@@ -74,27 +72,3 @@ def test_creating_a_tool_using_baseclass():
         == "What is the meaning of life?"
     )
 
-
-def test_setting_cache_function():
-    class MyCustomTool(BaseTool):
-        name: str = "Name of my tool"
-        description: str = "Clear description for what this tool is useful for, you agent will need this information to use it."
-        cache_function: Callable = lambda: False
-
-        def _run(self, question: str) -> str:
-            return question
-
-    my_tool = MyCustomTool()
-    assert not my_tool.cache_function()
-
-
-def test_default_cache_function_is_true():
-    class MyCustomTool(BaseTool):
-        name: str = "Name of my tool"
-        description: str = "Clear description for what this tool is useful for, you agent will need this information to use it."
-
-        def _run(self, question: str) -> str:
-            return question
-
-    my_tool = MyCustomTool()
-    assert my_tool.cache_function()

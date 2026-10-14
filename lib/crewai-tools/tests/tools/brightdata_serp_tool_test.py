@@ -33,9 +33,21 @@ class TestBrightDataSearchTool(unittest.TestCase):
 
         result = self.tool._run(**input_data)
 
-        # Assertions
-        self.assertIsInstance(result, str)  # Your tool returns response.text (string)
-        mock_post.assert_called_once()
+        self.assertEqual(result, "mock response text")
+        mock_post.assert_called_once_with(
+            self.tool.base_url,
+            json={
+                "zone": "test_zone",
+                "url": "https://www.google.com/search?q=latest%20AI%20news"
+                "&gl=us&hl=en&num=10&brd_json=1&tbm=nws",
+                "format": "raw",
+            },
+            headers={
+                "Authorization": "Bearer test_api_key",
+                "Content-Type": "application/json",
+            },
+            timeout=30,
+        )
 
     @patch("requests.post")
     def test_run_with_request_exception(self, mock_post):

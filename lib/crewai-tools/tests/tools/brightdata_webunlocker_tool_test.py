@@ -19,7 +19,19 @@ def test_run_success_html(mock_post):
     mock_post.return_value = mock_response
 
     tool = BrightDataWebUnlockerTool()
-    tool._run(url="https://example.com", format="html", save_file=False)
+    result = tool._run(url="https://example.com", format="html", save_file=False)
+
+    assert result == "<html><body>Test</body></html>"
+    assert mock_post.call_args.kwargs["json"] == {
+        "url": "https://example.com",
+        "zone": "test_zone",
+        "format": "html",
+        "data_format": "markdown",
+    }
+    assert mock_post.call_args.kwargs["headers"] == {
+        "Authorization": "Bearer test_api_key",
+        "Content-Type": "application/json",
+    }
 
 
 @patch.dict(
@@ -37,7 +49,8 @@ def test_run_success_json(mock_post):
     tool = BrightDataWebUnlockerTool()
     result = tool._run(url="https://example.com", format="json")
 
-    assert isinstance(result, str)
+    assert result == "mock response text"
+    assert mock_post.call_args.kwargs["json"]["format"] == "json"
 
 
 @patch.dict(

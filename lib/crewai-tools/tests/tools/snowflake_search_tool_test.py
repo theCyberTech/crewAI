@@ -69,18 +69,21 @@ async def test_connection_pooling(snowflake_tool, mock_snowflake_connection):
 
 @pytest.mark.asyncio
 async def test_cleanup_on_deletion(snowflake_tool, mock_snowflake_connection):
+    other_connection = MagicMock()
     with patch.object(snowflake_tool, "_create_connection") as mock_create_conn:
         mock_create_conn.return_value = mock_snowflake_connection
 
         await snowflake_tool._get_connection()
 
-        async with snowflake_tool._pool_lock:
+        with snowflake_tool._pool_lock:
             snowflake_tool._connection_pool.append(mock_snowflake_connection)
+            snowflake_tool._connection_pool.append(other_connection)
 
         # Trigger cleanup
         snowflake_tool.__del__()
 
-        mock_snowflake_connection.close.assert_called_once()
+        mock_snowflake_connection.close.assert_called_once_with()
+        other_connection.close.assert_called_once_with()
 
 
 def test_config_validation():

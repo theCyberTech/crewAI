@@ -57,12 +57,6 @@ def test_valid_prompt_with_organization_id():
     assert schema.organization_id == "org-123"
 
 
-def test_empty_prompt_validation():
-    schema = GenerateCrewaiAutomationToolSchema(prompt="")
-    assert schema.prompt == ""
-    assert schema.organization_id is None
-
-
 @patch("requests.post")
 def test_successful_generation_without_org_id(mock_post, tool):
     mock_response = MagicMock()

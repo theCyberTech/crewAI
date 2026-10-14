@@ -49,7 +49,7 @@ def test_cleanup_on_deletion(mongodb_vector_search_tool):
     with patch.object(mongodb_vector_search_tool, "_client") as mock_client:
         mongodb_vector_search_tool.__del__()
 
-        mock_client.close.assert_called_once()
+        mock_client.close.assert_called_once_with()
 
 
 def test_create_search_index(mongodb_vector_search_tool):

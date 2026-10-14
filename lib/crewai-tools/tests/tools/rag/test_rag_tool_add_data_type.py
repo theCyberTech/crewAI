@@ -45,6 +45,14 @@ def rag_tool(mock_rag_client: MagicMock) -> RagTool:
         return RagTool()
 
 
+def _added_documents(mock_rag_client: MagicMock) -> list[tuple[str, str]]:
+    return sorted(
+        (doc["content"], doc["metadata"]["data_type"])
+        for call in mock_rag_client.add_documents.call_args_list
+        for doc in call.kwargs["documents"]
+    )
+
+
 class TestDataTypeFileAlias:
     """Tests for data_type='file' alias."""
 
@@ -58,7 +66,9 @@ class TestDataTypeFileAlias:
 
             rag_tool.add(path=str(test_file), data_type="file")
 
-            assert mock_rag_client.add_documents.called
+            assert _added_documents(mock_rag_client) == [
+                ("Test content for file alias.", "DataType.TEXT_FILE")
+            ]
 
     def test_file_alias_with_nonexistent_file_raises_error(
         self, rag_tool: RagTool
@@ -77,7 +87,9 @@ class TestDataTypeFileAlias:
 
             rag_tool.add(data_type="file", path=str(test_file))
 
-            assert mock_rag_client.add_documents.called
+            assert _added_documents(mock_rag_client) == [
+                ("Content via path keyword.", "DataType.TEXT_FILE")
+            ]
 
     def test_file_alias_with_file_path_keyword(
         self, rag_tool: RagTool, mock_rag_client: MagicMock
@@ -89,7 +101,9 @@ class TestDataTypeFileAlias:
 
             rag_tool.add(data_type="file", file_path=str(test_file))
 
-            assert mock_rag_client.add_documents.called
+            assert _added_documents(mock_rag_client) == [
+                ("Content via file_path keyword.", "DataType.TEXT_FILE")
+            ]
 
 
 class TestDataTypeStringValues:
@@ -118,7 +132,9 @@ class TestDataTypeStringValues:
 
                 rag_tool.add(path=str(test_file), data_type="pdf_file")
 
-                assert mock_rag_client.add_documents.called
+                assert _added_documents(mock_rag_client) == [
+                    ("PDF content", "DataType.PDF_FILE")
+                ]
 
     def test_text_file_string(
         self, rag_tool: RagTool, mock_rag_client: MagicMock
@@ -130,7 +146,9 @@ class TestDataTypeStringValues:
 
             rag_tool.add(path=str(test_file), data_type="text_file")
 
-            assert mock_rag_client.add_documents.called
+            assert _added_documents(mock_rag_client) == [
+                ("Plain text content.", "DataType.TEXT_FILE")
+            ]
 
     def test_csv_string(self, rag_tool: RagTool, mock_rag_client: MagicMock) -> None:
         """Test data_type='csv' with existing CSV file."""
@@ -160,7 +178,7 @@ class TestDataTypeStringValues:
 
             rag_tool.add(path=str(test_file), data_type="xml")
 
-            assert mock_rag_client.add_documents.called
+            assert _added_documents(mock_rag_client) == [("value", "DataType.XML")]
 
     def test_mdx_string(self, rag_tool: RagTool, mock_rag_client: MagicMock) -> None:
         """Test data_type='mdx' with existing MDX file."""
@@ -176,7 +194,9 @@ class TestDataTypeStringValues:
         """Test data_type='text' with raw text content."""
         rag_tool.add("This is raw text content.", data_type="text")
 
-        assert mock_rag_client.add_documents.called
+        assert _added_documents(mock_rag_client) == [
+            ("This is raw text content.", "DataType.TEXT")
+        ]
 
     def test_directory_string(
         self, rag_tool: RagTool, mock_rag_client: MagicMock
@@ -188,7 +208,10 @@ class TestDataTypeStringValues:
 
             rag_tool.add(path=tmpdir, data_type="directory")
 
-            assert mock_rag_client.add_documents.called
+            assert _added_documents(mock_rag_client) == [
+                ("Content 1", "DataType.TEXT_FILE"),
+                ("Content 2", "DataType.TEXT_FILE"),
+            ]
 
 
 class TestDataTypeEnumValues:
@@ -204,7 +227,9 @@ class TestDataTypeEnumValues:
 
             rag_tool.add(str(test_file), data_type=DataType.FILE)
 
-            assert mock_rag_client.add_documents.called
+            assert _added_documents(mock_rag_client) == [
+                ("File enum auto-detect content.", "DataType.TEXT_FILE")
+            ]
 
     def test_datatype_file_enum_with_nonexistent_file_raises_error(
         self, rag_tool: RagTool
@@ -235,7 +260,9 @@ class TestDataTypeEnumValues:
 
                 rag_tool.add(str(test_file), data_type=DataType.PDF_FILE)
 
-                assert mock_rag_client.add_documents.called
+                assert _added_documents(mock_rag_client) == [
+                    ("PDF content", "DataType.PDF_FILE")
+                ]
 
     def test_datatype_text_file_enum(
         self, rag_tool: RagTool, mock_rag_client: MagicMock
@@ -247,7 +274,9 @@ class TestDataTypeEnumValues:
 
             rag_tool.add(str(test_file), data_type=DataType.TEXT_FILE)
 
-            assert mock_rag_client.add_documents.called
+            assert _added_documents(mock_rag_client) == [
+                ("Text file content.", "DataType.TEXT_FILE")
+            ]
 
     def test_datatype_text_enum(
         self, rag_tool: RagTool, mock_rag_client: MagicMock
@@ -255,7 +284,9 @@ class TestDataTypeEnumValues:
         """Test data_type=DataType.TEXT with raw text."""
         rag_tool.add("Raw text using enum.", data_type=DataType.TEXT)
 
-        assert mock_rag_client.add_documents.called
+        assert _added_documents(mock_rag_client) == [
+            ("Raw text using enum.", "DataType.TEXT")
+        ]
 
     def test_datatype_directory_enum(
         self, rag_tool: RagTool, mock_rag_client: MagicMock
@@ -266,7 +297,9 @@ class TestDataTypeEnumValues:
 
             rag_tool.add(tmpdir, data_type=DataType.DIRECTORY)
 
-            assert mock_rag_client.add_documents.called
+            assert _added_documents(mock_rag_client) == [
+                ("Directory file content.", "DataType.TEXT_FILE")
+            ]
 
 
 class TestInvalidDataType:
@@ -347,7 +380,9 @@ class TestKeywordArgumentVariants:
 
             rag_tool.add(str(test_file), data_type="text_file")
 
-            assert mock_rag_client.add_documents.called
+            assert _added_documents(mock_rag_client) == [
+                ("Positional arg content.", "DataType.TEXT_FILE")
+            ]
 
     def test_path_keyword_with_data_type(
         self, rag_tool: RagTool, mock_rag_client: MagicMock
@@ -359,7 +394,9 @@ class TestKeywordArgumentVariants:
 
             rag_tool.add(path=str(test_file), data_type="text_file")
 
-            assert mock_rag_client.add_documents.called
+            assert _added_documents(mock_rag_client) == [
+                ("Path keyword content.", "DataType.TEXT_FILE")
+            ]
 
     def test_file_path_keyword_with_data_type(
         self, rag_tool: RagTool, mock_rag_client: MagicMock
@@ -371,7 +408,9 @@ class TestKeywordArgumentVariants:
 
             rag_tool.add(file_path=str(test_file), data_type="text_file")
 
-            assert mock_rag_client.add_documents.called
+            assert _added_documents(mock_rag_client) == [
+                ("File path keyword content.", "DataType.TEXT_FILE")
+            ]
 
     def test_directory_path_keyword(
         self, rag_tool: RagTool, mock_rag_client: MagicMock
@@ -382,7 +421,9 @@ class TestKeywordArgumentVariants:
 
             rag_tool.add(directory_path=tmpdir)
 
-            assert mock_rag_client.add_documents.called
+            assert _added_documents(mock_rag_client) == [
+                ("Directory content.", "DataType.TEXT_FILE")
+            ]
 
 
 class TestAutoDetection:
@@ -404,7 +445,9 @@ class TestAutoDetection:
             # No data_type specified - should auto-detect
             rag_tool.add(str(test_file))
 
-            assert mock_rag_client.add_documents.called
+            assert _added_documents(mock_rag_client) == [
+                ("Auto-detected text file.", "DataType.TEXT_FILE")
+            ]
 
     def test_auto_detect_csv_file(
         self, rag_tool: RagTool, mock_rag_client: MagicMock
@@ -439,7 +482,9 @@ class TestAutoDetection:
 
             rag_tool.add(tmpdir)
 
-            assert mock_rag_client.add_documents.called
+            assert _added_documents(mock_rag_client) == [
+                ("Auto-detected directory.", "DataType.TEXT_FILE")
+            ]
 
     def test_auto_detect_raw_text(
         self, rag_tool: RagTool, mock_rag_client: MagicMock
@@ -447,7 +492,9 @@ class TestAutoDetection:
         """Test auto-detection of raw text (non-file content)."""
         rag_tool.add("Just some raw text content")
 
-        assert mock_rag_client.add_documents.called
+        assert _added_documents(mock_rag_client) == [
+            ("Just some raw text content", "DataType.TEXT")
+        ]
 
 
 class TestMetadataHandling:
@@ -467,12 +514,13 @@ class TestMetadataHandling:
                 metadata={"custom_key": "custom_value"},
             )
 
-            assert mock_rag_client.add_documents.called
-            call_args = mock_rag_client.add_documents.call_args
-            documents = call_args.kwargs.get("documents", call_args.args[0] if call_args.args else [])
-
-            # Check that at least one document has the custom metadata
-            assert any(
-                doc.get("metadata", {}).get("custom_key") == "custom_value"
-                for doc in documents
-            )
+            documents = mock_rag_client.add_documents.call_args.kwargs["documents"]
+            assert [doc["metadata"] for doc in documents] == [
+                {
+                    "custom_key": "custom_value",
+                    "data_type": "DataType.TEXT_FILE",
+                    "chunk_index": 0,
+                    "total_chunks": 1,
+                    "source": str(test_file),
+                }
+            ]

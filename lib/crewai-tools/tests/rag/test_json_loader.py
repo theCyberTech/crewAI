@@ -153,7 +153,8 @@ class TestJSONLoader:
 
         loader = JSONLoader()
         result = loader.load(SourceContent("https://example.com/data.json"))
-        assert all(part in result.content for part in ["key", "value"])
+        assert result.content == 'key: "value"'
+        assert result.metadata == {"format": "json", "type": "dict", "size": 1}
 
     @patch("crewai_tools.security.safe_requests._raw_get")
     def test_url_with_custom_headers(self, mock_get):

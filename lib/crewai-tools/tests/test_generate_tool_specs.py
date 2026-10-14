@@ -227,6 +227,8 @@ def test_base_tool_fields_excluded_from_init_params(mock_tool_extractor):
     assert not leaked_required, (
         f"BaseTool fields leaked into init_params_schema required: {leaked_required}"
     )
+    assert props == {"another_parameter", "my_parameter", "my_parameter_bool"}
+    assert required == set()
 
 
 def test_intermediate_base_fields_preserved_for_derived_tool(extractor):

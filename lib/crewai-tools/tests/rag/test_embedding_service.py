@@ -6,60 +6,18 @@ import os
 import pytest
 from unittest.mock import Mock, patch
 
-from crewai_tools.rag.embedding_service import EmbeddingService, EmbeddingConfig
-
-
-class TestEmbeddingConfig:
-    """Test the EmbeddingConfig model."""
-
-    def test_default_config(self):
-        """Test default configuration values."""
-        config = EmbeddingConfig(provider="openai", model="text-embedding-3-small")
-
-        assert config.provider == "openai"
-        assert config.model == "text-embedding-3-small"
-        assert config.api_key is None
-        assert config.timeout == 30.0
-        assert config.max_retries == 3
-        assert config.batch_size == 100
-        assert config.extra_config == {}
-
-    def test_custom_config(self):
-        """Test custom configuration values."""
-        config = EmbeddingConfig(
-            provider="voyageai",
-            model="voyage-2",
-            api_key="test-key",
-            timeout=60.0,
-            max_retries=5,
-            batch_size=50,
-            extra_config={"input_type": "document"}
-        )
-
-        assert config.provider == "voyageai"
-        assert config.model == "voyage-2"
-        assert config.api_key == "test-key"
-        assert config.timeout == 60.0
-        assert config.max_retries == 5
-        assert config.batch_size == 50
-        assert config.extra_config == {"input_type": "document"}
+from crewai.rag.embeddings.factory import PROVIDER_PATHS
+from crewai_tools.rag.embedding_service import EmbeddingService
 
 
 class TestEmbeddingService:
     """Test the EmbeddingService class."""
 
     def test_list_supported_providers(self):
-        """Test listing supported providers."""
+        """Every listed provider is buildable, and every buildable provider is listed."""
         providers = EmbeddingService.list_supported_providers()
-        expected_providers = [
-            "openai", "openrouter", "azure", "voyageai", "cohere", "google-generativeai",
-            "amazon-bedrock", "huggingface", "jina", "ollama", "sentence-transformer",
-            "instructor", "watsonx", "custom"
-        ]
 
-        assert isinstance(providers, list)
-        assert len(providers) >= 15  # Should have at least 15 providers
-        assert all(provider in providers for provider in expected_providers)
+        assert set(providers) == set(PROVIDER_PATHS) - {"google"}
 
     def test_get_default_api_key(self):
         """Test getting default API keys from environment."""

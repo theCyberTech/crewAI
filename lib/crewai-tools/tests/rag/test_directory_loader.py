@@ -37,16 +37,21 @@ class TestDirectoryLoader:
         assert result.metadata["total_files"] == 2
 
     def test_load_recursive(self, temp_directory):
-        self._create_file(temp_directory, "file1.txt")
+        file1 = self._create_file(temp_directory, "file1.txt")
         nested = os.path.join(temp_directory, "subdir", "nested")
         os.makedirs(nested)
-        self._create_file(os.path.join(temp_directory, "subdir"), "file2.txt")
-        self._create_file(nested, "file3.txt")
+        file2 = self._create_file(os.path.join(temp_directory, "subdir"), "file2.txt")
+        file3 = self._create_file(nested, "file3.txt")
 
         loader = DirectoryLoader()
         result = loader.load(SourceContent(temp_directory), recursive=True)
 
-        assert all(f"file{i}.txt" in result.content for i in range(1, 4))
+        assert result.content == (
+            f"=== File: {file1} ===\ntest content\n\n"
+            f"=== File: {file2} ===\ntest content\n\n"
+            f"=== File: {file3} ===\ntest content"
+        )
+        assert result.metadata["total_files"] == 3
 
     def test_include_and_exclude_extensions(self, temp_directory):
         self._create_file(temp_directory, "a.txt")
@@ -130,26 +135,32 @@ class TestDirectoryLoader:
         assert len(result.metadata["error_details"]) == 1
 
     def test_metadata_structure(self, temp_directory):
-        self._create_file(temp_directory, "test.txt", "Sample")
+        path = self._create_file(temp_directory, "test.txt", "Sample")
 
         loader = DirectoryLoader()
         result = loader.load(SourceContent(temp_directory))
-        metadata = result.metadata
 
-        expected_keys = {
-            "format",
-            "directory_path",
-            "total_files",
-            "processed_files",
-            "errors",
-            "file_details",
-            "error_details",
+        assert result.content == f"=== File: {path} ===\nSample"
+        assert result.metadata == {
+            "format": "directory",
+            "directory_path": temp_directory,
+            "total_files": 1,
+            "processed_files": 1,
+            "errors": 0,
+            "file_details": [
+                {
+                    "path": path,
+                    "metadata": {
+                        "file_path": path,
+                        "file_size": 6,
+                        "data_type": "DataType.TEXT_FILE",
+                        "loader_type": "TextFileLoader",
+                    },
+                    "source": path,
+                }
+            ],
+            "error_details": [],
         }
-
-        assert expected_keys.issubset(metadata)
-        assert all(
-            k in metadata["file_details"][0] for k in ("path", "metadata", "source")
-        )
 
     def test_empty_directory(self, temp_directory):
         loader = DirectoryLoader()

@@ -16,8 +16,8 @@ class TestCrewaiPlatformTools(unittest.TestCase):
         mock_get.return_value = mock_response
 
         tools = CrewaiPlatformTools(apps=["github"])
-        assert tools is not None
-        assert type(tools) is list
+        assert tools == []
+        assert mock_get.call_args.kwargs["params"] == {"apps": "github"}
 
     @patch.dict("os.environ", {"CREWAI_PLATFORM_INTEGRATION_TOKEN": "test_token"})
     @patch(
@@ -146,9 +146,8 @@ class TestCrewaiPlatformTools(unittest.TestCase):
             mock_get.return_value = mock_response
 
             tools = CrewaiPlatformTools(apps=[])
-            assert tools is not None
-            assert isinstance(tools, list)
-            assert len(tools) == 0
+            assert tools == []
+            mock_get.assert_not_called()
 
     @patch.dict("os.environ", {"CREWAI_PLATFORM_INTEGRATION_TOKEN": "test_token"})
     @patch(

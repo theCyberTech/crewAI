@@ -91,18 +91,12 @@ Regular paragraph text.
 <MyComponent prop1="value1">Nested content inside component</MyComponent>
 """
         result, _ = self._load_from_file(content)
-        assert all(
-            tag not in result.content
-            for tag in ["<div", "<strong>", "<ul>", "<MyComponent"]
-        )
-        assert all(
-            text in result.content
-            for text in [
-                "Info:",
-                "Item 1",
-                "Regular paragraph text.",
-                "Nested content inside component",
-            ]
+        assert result.content == (
+            "# MDX with Complex JSX\n\n"
+            "    Info: This is important information.\n"
+            "    Item 1Item 2\n\n"
+            "Regular paragraph text.\n\n"
+            "Nested content inside component"
         )
 
     def test_whitespace_cleanup(self):
@@ -181,7 +175,7 @@ export const config = {}
 <div></div>
 """
         result, _ = self._load_from_file(content)
-        assert result.content.strip() == ""
+        assert result.content == ""
 
     def test_edge_case_parsing(self):
         content = """

@@ -74,7 +74,7 @@ class TestWebPageLoader:
 
         loader = WebPageLoader()
         result = loader.load(SourceContent("https://example.com/messy-text"))
-        assert result.content is not None
+        assert result.content == "Text with extra spaces\nMore text"
         assert result.metadata["title"] == ""
 
     @patch("crewai_tools.security.safe_requests._raw_get")

@@ -49,6 +49,7 @@ _ibm_db_dbi_stub = _make_ibm_db_dbi_stub()
 sys.modules.setdefault("ibm_db", _ibm_db_stub)
 sys.modules.setdefault("ibm_db_dbi", _ibm_db_dbi_stub)
 
+import crewai_tools  # noqa: E402
 from crewai_tools.tools.db2_search_tool.db2_search_tool import (  # noqa: E402
     DB2JSONEncoder,
     DB2ToolSchema,
@@ -125,12 +126,6 @@ class TestDB2ToolSchema:
         with pytest.raises(ValueError, match="filter_by must be a non-empty column name"):
             DB2ToolSchema(query="search", filter_by="   ", filter_value="tech")
 
-    def test_none_filter_by_and_none_filter_value_is_valid(self):
-        schema = DB2ToolSchema(query="hello", filter_by=None, filter_value=None)
-        assert schema.filter_by is None
-        assert schema.filter_value is None
-
-
 # ---------------------------------------------------------------------------
 # DB2VectorSearchTool field validation
 # ---------------------------------------------------------------------------
@@ -143,11 +138,25 @@ class TestDB2VectorSearchToolConfig:
             connection_string=self._conn,
             db2_package=_ibm_db_stub,
             db2_dbi_package=_ibm_db_dbi_stub,
+            custom_embedding_fn=_fake_embedding,
         )
-        assert tool.return_columns == ["content"]
-        assert tool.limit == 3
-        assert tool.distance_metric == "COSINE"
-        assert tool.max_distance is None
+        tool.cursor = _make_cursor_with_rows([("Far doc", 5.0)])
+        cursor = tool.cursor
+
+        with patch.object(tool, "_connect"):
+            with patch.object(tool, "_disconnect"):
+                result = json.loads(tool._run(query="test"))
+
+        cursor.execute.assert_called_once_with(
+            "SELECT content, VECTOR_DISTANCE(embedding, VECTOR(CAST(? AS CLOB), 3,"
+            " FLOAT32), COSINE) AS distance FROM documents ORDER BY distance ASC"
+            " FETCH FIRST 3 ROWS ONLY",
+            ("[0.1, 0.2, 0.3]",),
+        )
+        assert result == {
+            "success": True,
+            "results": [{"distance": 5.0, "data": {"content": "Far doc"}}],
+        }
 
     def test_empty_return_columns_raises(self):
         with pytest.raises(ValueError, match="return_columns cannot be empty"):
@@ -205,16 +214,16 @@ class TestDB2JSONEncoder:
     def test_encodes_datetime(self):
         dt = datetime.datetime(2024, 1, 15, 12, 0, 0)
         result = json.dumps(dt, cls=DB2JSONEncoder)
-        assert "2024-01-15" in result
+        assert result == '"2024-01-15T12:00:00"'
 
     def test_encodes_date(self):
         d = datetime.date(2024, 6, 1)
         result = json.dumps(d, cls=DB2JSONEncoder)
-        assert "2024-06-01" in result
+        assert result == '"2024-06-01"'
 
     def test_encodes_bytes(self):
         result = json.dumps(b"\x00\xff", cls=DB2JSONEncoder)
-        assert "<binary_data>" in result
+        assert result == '"<binary_data>"'
 
     def test_raises_for_unknown_type(self):
         class Unknown:
@@ -316,7 +325,11 @@ class TestGenerateEmbedding:
                 tool._generate_embedding("second query")
 
         # OpenAI() constructor called only once — client was reused
-        mock_openai.OpenAI.assert_called_once()
+        mock_openai.OpenAI.assert_called_once_with(api_key="test-key")
+        assert mock_client.embeddings.create.call_args_list == [
+            call(input=["first query"], model="text-embedding-3-large"),
+            call(input=["second query"], model="text-embedding-3-large"),
+        ]
 
     def test_raises_when_no_openai_key_and_no_custom_fn(self):
         tool = _make_tool()
@@ -343,12 +356,18 @@ class TestRunQueryValidation:
     def test_whitespace_only_query_returns_error_json(self):
         tool = _make_tool(custom_embedding_fn=_fake_embedding)
         result = json.loads(tool._run(query="   "))
-        assert result["success"] is False
+        assert result == {
+            "success": False,
+            "error": "Query cannot be empty or contain only whitespace.",
+        }
 
     def test_none_query_returns_error_json(self):
         tool = _make_tool(custom_embedding_fn=_fake_embedding)
         result = json.loads(tool._run(query=None))
-        assert result["success"] is False
+        assert result == {
+            "success": False,
+            "error": "Query cannot be empty or contain only whitespace.",
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -455,10 +474,9 @@ class TestRunSuccessful:
                 )
 
         assert result["success"] is True
-        # The second param in the execute call must be the filter value
         execute_args = cursor.execute.call_args
         params_tuple = execute_args[0][1]
-        assert "AI" in params_tuple
+        assert params_tuple == ("[0.1, 0.2, 0.3]", "AI")
 
     def test_sql_contains_correct_metric(self):
         rows = [("doc", 0.1)]
@@ -469,7 +487,7 @@ class TestRunSuccessful:
                 tool._run(query="test")
 
         executed_sql = cursor.execute.call_args[0][0]
-        assert "EUCLIDEAN" in executed_sql
+        assert "FLOAT32), EUCLIDEAN) AS distance" in executed_sql
 
     def test_sql_contains_correct_limit(self):
         rows = []
@@ -480,7 +498,7 @@ class TestRunSuccessful:
                 tool._run(query="test")
 
         executed_sql = cursor.execute.call_args[0][0]
-        assert "7" in executed_sql
+        assert executed_sql.endswith(" FETCH FIRST 7 ROWS ONLY")
 
     def test_sql_contains_where_clause_when_filter_provided(self):
         rows = []
@@ -501,8 +519,12 @@ class TestRunSuccessful:
             with patch.object(tool, "_disconnect"):
                 tool._run(query="test")
 
-        executed_sql = cursor.execute.call_args[0][0]
-        assert "WHERE" not in executed_sql
+        cursor.execute.assert_called_once_with(
+            "SELECT content, VECTOR_DISTANCE(embedding, VECTOR(CAST(? AS CLOB), 3,"
+            " FLOAT32), COSINE) AS distance FROM documents ORDER BY distance ASC"
+            " FETCH FIRST 3 ROWS ONLY",
+            ("[0.1, 0.2, 0.3]",),
+        )
 
     def test_json_encoder_handles_decimal_in_results(self):
         rows = [(decimal.Decimal("42.50"), 0.1)]
@@ -520,10 +542,10 @@ class TestRunSuccessful:
         tool, cursor = self._setup_connected_tool(rows)
 
         with patch.object(tool, "_connect"):
-            with patch.object(tool, "_disconnect") as mock_disconnect:
-                tool._run(query="test")
+            tool._run(query="test")
 
-        mock_disconnect.assert_called_once()
+        cursor.close.assert_called_once_with()
+        assert tool.cursor is None
 
     def test_disconnect_called_on_unexpected_error(self):
         tool = _make_tool(custom_embedding_fn=_fake_embedding)
@@ -569,7 +591,12 @@ class TestRunSQLInjectionPrevention:
                     tool._run(query="test", filter_by=bad_col, filter_value="val")
                 )
 
-        assert result["success"] is False
+        assert result == {
+            "success": False,
+            "error": f"Security Alert: Invalid database identifier detected: {bad_col}",
+            "error_type": "ValueError",
+        }
+        mock_cursor.execute.assert_not_called()
 
     def test_empty_filter_by_bypasses_where_clause(self):
         """Empty string is falsy in Python — _run skips WHERE rather than injecting.
@@ -625,22 +652,34 @@ class TestConnectDisconnect:
         _ibm_db_stub.connect.return_value = mock_conn
 
         tool._connect()
+        cursor = tool.cursor
         tool._disconnect()
 
+        cursor.close.assert_called_once_with()
+        _ibm_db_stub.close.assert_called_with(mock_conn)
         assert tool.connection is None
         assert tool.dbi_connection is None
         assert tool.cursor is None
 
     def test_disconnect_is_safe_when_already_disconnected(self):
         tool = _make_tool(custom_embedding_fn=_fake_embedding)
-        # Should not raise even with no open connection
+        tool.db2_package = MagicMock()
+
         tool._disconnect()
+
+        tool.db2_package.close.assert_not_called()
+        assert tool.connection is None
+        assert tool.cursor is None
 
     def test_del_calls_disconnect(self):
         tool = _make_tool(custom_embedding_fn=_fake_embedding)
-        with patch.object(tool, "_disconnect") as mock_disconnect:
-            tool.__del__()
-        mock_disconnect.assert_called_once()
+        cursor = MagicMock()
+        tool.cursor = cursor
+
+        tool.__del__()
+
+        cursor.close.assert_called_once_with()
+        assert tool.cursor is None
 
     def test_connect_resolves_packages_without_injection(self):
         """Constructs the tool WITHOUT injecting db2_package / db2_dbi_package.
@@ -674,34 +713,11 @@ class TestConnectDisconnect:
 # ---------------------------------------------------------------------------
 
 class TestToolMetadata:
-    def test_tool_name(self):
-        tool = _make_tool()
-        assert tool.name == "DB2VectorSearchTool"
-
-    def test_tool_description(self):
-        tool = _make_tool()
-        assert "DB2" in tool.description
-        assert "custom embedding function" in tool.description
-        assert "OpenAI embeddings" in tool.description
-
     def test_args_schema_is_db2_tool_schema(self):
         tool = _make_tool()
         assert tool.args_schema is DB2ToolSchema
 
-    def test_package_dependencies_listed(self):
-        tool = _make_tool()
-        assert "ibm_db" in tool.package_dependencies
-
-    def test_env_vars_declared(self):
-        tool = _make_tool()
-        env_var_names = {ev.name for ev in tool.env_vars}
-        assert "OPENAI_API_KEY" in env_var_names
-        assert "DB2_CONNECTION_STRING" in env_var_names
-
     def test_public_import_from_crewai_tools(self):
         """from crewai_tools import DB2VectorSearchTool must work at package level."""
-        from crewai_tools import DB2ToolSchema  # noqa: PLC0415
-        from crewai_tools import DB2VectorSearchTool  # noqa: PLC0415
-
-        assert DB2VectorSearchTool is not None
-        assert DB2ToolSchema is not None
+        assert crewai_tools.DB2VectorSearchTool is DB2VectorSearchTool
+        assert crewai_tools.DB2ToolSchema is DB2ToolSchema

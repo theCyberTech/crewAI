@@ -1,3 +1,4 @@
+import hashlib
 import tempfile
 from unittest.mock import Mock, patch
 
@@ -147,4 +148,8 @@ class TestDOCXLoader:
         with tempfile.NamedTemporaryFile(suffix=".docx") as f:
             loader = DOCXLoader()
             source = SourceContent(f.name)
-            assert loader.load(source).doc_id == loader.load(source).doc_id
+            expected_id = hashlib.sha256(
+                (f.name + "Consistent content").encode("utf-8")
+            ).hexdigest()
+            assert loader.load(source).doc_id == expected_id
+            assert loader.load(source).doc_id == expected_id

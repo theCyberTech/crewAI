@@ -86,9 +86,16 @@ def oxylabs_api() -> RealtimeClient:
         (OxylabsAmazonProductScraperTool,),
     ],
 )
-def test_tool_initialization(tool_class: type[BaseTool]):
+def test_tool_initialization(tool_class: type[BaseTool], monkeypatch):
+    client_cls = MagicMock()
+    monkeypatch.setattr("oxylabs.RealtimeClient", client_cls)
+
     tool = tool_class(username="username", password="password")
-    assert isinstance(tool, tool_class)
+
+    assert tool.oxylabs_api is client_cls.return_value
+    kwargs = client_cls.call_args.kwargs
+    assert (kwargs["username"], kwargs["password"]) == ("username", "password")
+    assert kwargs["sdk_type"].startswith("oxylabs-crewai-sdk-python/")
 
 
 @pytest.mark.parametrize(
@@ -100,15 +107,17 @@ def test_tool_initialization(tool_class: type[BaseTool]):
         (OxylabsAmazonProductScraperTool,),
     ],
 )
-def test_tool_initialization_with_env_vars(tool_class: type[BaseTool]):
-    os.environ["OXYLABS_USERNAME"] = "username"
-    os.environ["OXYLABS_PASSWORD"] = "password"
+def test_tool_initialization_with_env_vars(tool_class: type[BaseTool], monkeypatch):
+    monkeypatch.setenv("OXYLABS_USERNAME", "env-username")
+    monkeypatch.setenv("OXYLABS_PASSWORD", "env-password")
+    client_cls = MagicMock()
+    monkeypatch.setattr("oxylabs.RealtimeClient", client_cls)
 
     tool = tool_class()
-    assert isinstance(tool, tool_class)
 
-    del os.environ["OXYLABS_USERNAME"]
-    del os.environ["OXYLABS_PASSWORD"]
+    assert tool.oxylabs_api is client_cls.return_value
+    kwargs = client_cls.call_args.kwargs
+    assert (kwargs["username"], kwargs["password"]) == ("env-username", "env-password")
 
 
 @pytest.mark.parametrize(
@@ -158,8 +167,14 @@ def test_tool_invocation(
     tool.__dict__["oxylabs_api"] = oxylabs_api
 
     result = tool.run("Scraping Query 1")
-    assert isinstance(result, str)
-    assert isinstance(json.loads(result), dict)
+    assert json.loads(result) == {
+        "results": {
+            "products": [
+                {"title": "Amazing product", "price": 14.99, "currency": "USD"},
+                {"title": "Good product", "price": 9.99, "currency": "USD"},
+            ],
+        },
+    }
 
     result = tool.run("Scraping Query 2")
     assert isinstance(result, str)

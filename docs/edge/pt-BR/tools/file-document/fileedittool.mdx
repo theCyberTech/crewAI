@@ -1,0 +1,94 @@
+---
+title: Edição de Arquivos
+description: O `FileEditTool` edita arquivos existentes substituindo uma string exata.
+icon: pen-to-square
+mode: "wide"
+---
+
+# `FileEditTool`
+
+## Descrição
+
+O `FileEditTool` é um componente do pacote crewai_tools que edita um arquivo de texto existente substituindo uma string exata.
+Em vez de reescrever o arquivo inteiro, o agente indica o trecho a ser alterado e o texto que deve ocupar o seu lugar, o que torna edições pequenas e pontuais em código, configurações e documentos baratas e seguras.
+O trecho deve corresponder exatamente uma vez, a menos que `replace_all` seja definido, para que uma correspondência ambígua nunca edite o lugar errado. As quebras de linha são mantidas como estão no disco, e os arquivos são lidos e gravados em UTF-8 por padrão.
+
+## Instalação
+
+Instale o pacote crewai_tools para usar o `FileEditTool` em seus projetos:
+
+```shell
+pip install 'crewai[tools]'
+```
+
+## Exemplo
+
+Para começar a usar o `FileEditTool`:
+
+```python Code
+from crewai_tools import FileEditTool
+
+# Initialize the tool
+file_edit_tool = FileEditTool()
+
+# Replace a single, unique snippet
+result = file_edit_tool.run(
+    file_path='config.yaml',
+    old_string='debug: false',
+    new_string='debug: true',
+)
+print(result)
+
+# Rename every occurrence of an identifier
+result = file_edit_tool.run(
+    file_path='app.py',
+    old_string='old_name',
+    new_string='new_name',
+    replace_all=True,
+)
+```
+
+Combine-o com o `FileReadTool` para que o agente possa ler o arquivo primeiro e copiar o texto exato que deseja substituir:
+
+```python Code
+from crewai import Agent
+from crewai_tools import FileEditTool, FileReadTool
+
+editor = Agent(
+    role="Code Editor",
+    goal="Make precise, minimal edits to project files",
+    backstory="You read a file before changing it and only touch the lines that need to change.",
+    tools=[FileReadTool(), FileEditTool()],
+)
+```
+
+## Argumentos
+
+O agente fornece estes em tempo de execução:
+
+- `file_path`: O caminho do arquivo existente a ser editado. Um caminho relativo é resolvido dentro do diretório permitido da ferramenta.
+- `old_string`: O texto exato a ser substituído, incluindo espaços em branco e indentação. Deve aparecer exatamente uma vez, a menos que `replace_all` seja verdadeiro; inclua linhas ao redor para torná-lo único.
+- `new_string`: O texto de substituição. Deve ser diferente de `old_string`. Passe uma string vazia para excluir `old_string`.
+- `replace_all` (opcional): Se todas as ocorrências devem ser substituídas. Aceita `true`/`false` (também `yes`/`no`, `on`/`off`, `1`/`0`). O padrão é `false`, que reporta um erro quando `old_string` aparece mais de uma vez.
+
+Você define estes ao construir a ferramenta:
+
+- `base_dir` (opcional): O diretório dentro do qual as edições devem permanecer. O padrão é o diretório de trabalho atual.
+- `encoding` (opcional): Codificação de texto usada para ler e gravar o arquivo. O padrão é `utf-8`.
+
+A ferramenta edita apenas arquivos existentes. Use o [`FileWriterTool`](/pt-BR/tools/file-document/filewritetool) para criar um arquivo ou substituir todo o seu conteúdo.
+
+## Caminhos permitidos
+
+Como o caminho do arquivo normalmente é escolhido por um LLM em tempo de execução, as edições ficam confinadas a um sandbox: o `file_path` resolvido deve estar dentro de `base_dir`, que por padrão é o diretório de trabalho atual. Segmentos `..`, caminhos absolutos e links simbólicos são resolvidos antes da verificação, portanto não podem ser usados para escapar.
+
+Para permitir que um agente edite fora do diretório de trabalho, aponte `base_dir` para a árvore desejada:
+
+```python Code
+# The agent may edit anywhere under /srv/app, and nowhere outside it
+file_edit_tool = FileEditTool(base_dir='/srv/app')
+```
+
+<Note>
+    Definir `CREWAI_TOOLS_ALLOW_UNSAFE_PATHS=true` desativa a validação de caminhos, mas isso se aplica a todo o processo e a todas as ferramentas do crewai-tools, incluindo as proteções contra SSRF das ferramentas que buscam URLs, portanto prefira `base_dir`.
+</Note>

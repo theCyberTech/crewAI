@@ -1,5 +1,6 @@
 """Tests for file validators."""
 
+from pathlib import Path
 from unittest.mock import patch
 
 from crewai_files import AudioFile, FileBytes, ImageFile, PDFFile, TextFile, VideoFile
@@ -28,6 +29,8 @@ from crewai_files.processing.validators import (
 )
 import pytest
 
+
+FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
 # Minimal valid PNG: 8x8 pixel RGB image (valid for PIL)
 MINIMAL_PNG = bytes(
@@ -173,7 +176,10 @@ class TestValidateImage:
 
         errors = validate_image(file, constraints, raise_on_error=False)
 
-        assert len(errors) == 2  # Size error and format error
+        assert errors == [
+            "Image 'test.png' size (75B) exceeds maximum (10B)",
+            "Image format 'image/png' is not supported. Supported: image/jpeg",
+        ]
 
 
 class TestValidatePDF:
@@ -245,18 +251,28 @@ class TestValidateFile:
     def test_validate_file_dispatches_to_image(self):
         """Test validate_file dispatches to image validator."""
         file = ImageFile(source=FileBytes(data=MINIMAL_PNG, filename="test.png"))
+        constraints = ProviderConstraints(
+            name="test",
+            image=ImageConstraints(max_size_bytes=10),
+        )
 
-        errors = validate_file(file, ANTHROPIC_CONSTRAINTS, raise_on_error=False)
-
-        assert len(errors) == 0
+        assert validate_file(file, ANTHROPIC_CONSTRAINTS, raise_on_error=False) == []
+        assert validate_file(file, constraints, raise_on_error=False) == [
+            "Image 'test.png' size (75B) exceeds maximum (10B)"
+        ]
 
     def test_validate_file_dispatches_to_pdf(self):
         """Test validate_file dispatches to PDF validator."""
         file = PDFFile(source=FileBytes(data=MINIMAL_PDF, filename="test.pdf"))
+        constraints = ProviderConstraints(
+            name="test",
+            pdf=PDFConstraints(max_size_bytes=10),
+        )
 
-        errors = validate_file(file, ANTHROPIC_CONSTRAINTS, raise_on_error=False)
-
-        assert len(errors) == 0
+        assert validate_file(file, ANTHROPIC_CONSTRAINTS, raise_on_error=False) == []
+        assert validate_file(file, constraints, raise_on_error=False) == [
+            "PDF 'test.pdf' size (302B) exceeds maximum (10B)"
+        ]
 
     def test_validate_file_unsupported_type(self):
         """Test validating a file type not supported by provider."""
@@ -351,7 +367,7 @@ class TestValidateAudio:
         errors = validate_audio(file, constraints, raise_on_error=False)
 
         assert len(errors) == 0
-        mock_get_duration.assert_called_once()
+        mock_get_duration.assert_called_once_with(MINIMAL_AUDIO, "test.mp3")
 
     @patch("crewai_files.processing.validators._get_audio_duration")
     def test_validate_audio_duration_fails(self, mock_get_duration):
@@ -474,7 +490,7 @@ class TestValidateVideo:
         errors = validate_video(file, constraints, raise_on_error=False)
 
         assert len(errors) == 0
-        mock_get_duration.assert_called_once()
+        mock_get_duration.assert_called_once_with(MINIMAL_VIDEO)
 
     @patch("crewai_files.processing.validators._get_video_duration")
     def test_validate_video_duration_fails(self, mock_get_duration):
@@ -550,6 +566,8 @@ class TestGetAudioDuration:
         result = _get_audio_duration(corrupt_data)
 
         assert result is None
+        sample_audio = (FIXTURES_DIR / "sample_audio.wav").read_bytes()
+        assert _get_audio_duration(sample_audio, "sample_audio.wav") == 1.0
 
 
 class TestGetVideoDuration:
@@ -569,9 +587,7 @@ class TestRealVideoFile:
     @pytest.fixture
     def sample_video_path(self):
         """Path to sample video fixture."""
-        from pathlib import Path
-
-        path = Path(__file__).parent.parent.parent / "fixtures" / "sample_video.mp4"
+        path = FIXTURES_DIR / "sample_video.mp4"
         if not path.exists():
             pytest.skip("sample_video.mp4 fixture not found")
         return path
@@ -590,8 +606,7 @@ class TestRealVideoFile:
 
         duration = _get_video_duration(sample_video_content, "video/mp4")
 
-        assert duration is not None
-        assert 4.5 <= duration <= 5.5  # ~5 seconds with tolerance
+        assert duration == 5.0
 
     def test_get_video_duration_real_file_no_format_hint(self, sample_video_content):
         """Test duration detection without format hint."""
@@ -602,8 +617,7 @@ class TestRealVideoFile:
 
         duration = _get_video_duration(sample_video_content)
 
-        assert duration is not None
-        assert 4.5 <= duration <= 5.5
+        assert duration == 5.0
 
     def test_validate_video_real_file_passes(self, sample_video_path):
         """Test validating real video file within constraints."""
@@ -640,5 +654,6 @@ class TestRealVideoFile:
         with pytest.raises(FileValidationError) as exc_info:
             validate_video(file, constraints)
 
-        assert "duration" in str(exc_info.value).lower()
-        assert "2s" in str(exc_info.value)
+        assert str(exc_info.value) == (
+            "Video 'sample_video.mp4' duration (5.0s) exceeds maximum (2s)"
+        )

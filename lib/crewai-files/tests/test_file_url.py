@@ -3,7 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from crewai_files import FileBytes, FileUrl, ImageFile
-from crewai_files.core.resolved import InlineBase64, UrlReference
+from crewai_files.core.resolved import InlineBase64, InlineBytes, UrlReference
 from crewai_files.core.sources import FilePath, _normalize_source
 from crewai_files.resolution.resolver import FileResolver
 import pytest
@@ -111,7 +111,7 @@ class TestFileUrl:
             content2 = url.read()
 
             mock_get.assert_called_once()
-            assert content1 == content2
+            assert content1 == content2 == b"fake content"
 
     def test_read_updates_content_type_from_response(self):
         """Test that read() updates content type from response headers."""
@@ -163,7 +163,7 @@ class TestFileUrl:
             content2 = await url.aread()
 
             mock_client.get.assert_called_once()
-            assert content1 == content2
+            assert content1 == content2 == b"cached content"
 
 
 class TestNormalizeSource:
@@ -191,13 +191,18 @@ class TestNormalizeSource:
         result = _normalize_source(str(test_file))
 
         assert isinstance(result, FilePath)
+        assert result.path == test_file
+        assert result.read() == b"test content"
 
-    def test_normalize_relative_path_is_not_url(self):
+    def test_normalize_relative_path_is_not_url(self, tmp_path, monkeypatch):
         """Test that relative path strings are not treated as URLs."""
-        result = _normalize_source("https://example.com/file.png")
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "file.png").write_bytes(b"relative content")
 
-        assert isinstance(result, FileUrl)
-        assert not isinstance(result, FilePath)
+        result = _normalize_source("file.png")
+
+        assert isinstance(result, FilePath)
+        assert str(result.path) == "file.png"
 
     def test_normalize_file_url_passthrough(self):
         """Test that FileUrl instances pass through unchanged."""
@@ -261,10 +266,15 @@ class TestResolverUrlHandling:
         mock_response.content = b"\x89PNG\r\n\x1a\n" + b"\x00" * 50
         mock_response.headers = {"content-type": "image/png"}
 
-        with patch("httpx.get", return_value=mock_response):
+        with patch("httpx.get", return_value=mock_response) as mock_get:
             resolved = resolver.resolve(file, "bedrock")
 
-            assert not isinstance(resolved, UrlReference)
+        mock_get.assert_called_once_with(
+            "https://example.com/image.png", follow_redirects=True
+        )
+        assert resolved == InlineBytes(
+            content_type="image/png", data=b"\x89PNG\r\n\x1a\n" + b"\x00" * 50
+        )
 
     def test_resolve_bytes_source_still_works(self):
         """Test that bytes source still resolves normally."""
@@ -278,7 +288,10 @@ class TestResolverUrlHandling:
 
         resolved = resolver.resolve(file, "anthropic")
 
-        assert isinstance(resolved, InlineBase64)
+        assert resolved == InlineBase64(
+            content_type="image/png",
+            data="iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIAQAAAAD5WavNAAAACklEQVR4nGNgAAAAAgAB4iG8MwAAAABJRU5ErkJggg==",
+        )
 
     @pytest.mark.asyncio
     async def test_aresolve_url_source(self):

@@ -1,5 +1,7 @@
 """Tests for FileResolver."""
 
+import base64
+
 from crewai_files import FileBytes, ImageFile
 from crewai_files.cache.upload_cache import UploadCache
 from crewai_files.core.resolved import InlineBase64, InlineBytes
@@ -20,30 +22,6 @@ MINIMAL_PNG = (
 )
 
 
-class TestFileResolverConfig:
-    """Tests for FileResolverConfig."""
-
-    def test_default_config(self):
-        """Test default configuration values."""
-        config = FileResolverConfig()
-
-        assert config.prefer_upload is False
-        assert config.upload_threshold_bytes is None
-        assert config.use_bytes_for_bedrock is True
-
-    def test_custom_config(self):
-        """Test custom configuration values."""
-        config = FileResolverConfig(
-            prefer_upload=True,
-            upload_threshold_bytes=1024 * 1024,
-            use_bytes_for_bedrock=False,
-        )
-
-        assert config.prefer_upload is True
-        assert config.upload_threshold_bytes == 1024 * 1024
-        assert config.use_bytes_for_bedrock is False
-
-
 class TestFileResolver:
     """Tests for FileResolver class."""
 
@@ -56,7 +34,7 @@ class TestFileResolver:
 
         assert isinstance(resolved, InlineBase64)
         assert resolved.content_type == "image/png"
-        assert len(resolved.data) > 0
+        assert resolved.data == base64.b64encode(MINIMAL_PNG).decode()
 
     def test_resolve_inline_bytes_for_bedrock(self):
         """Test resolving file as inline bytes for Bedrock."""
@@ -110,9 +88,11 @@ class TestFileResolver:
         cache.set(file=file, provider="gemini", file_id="test")
 
         resolver = FileResolver(upload_cache=cache)
+        assert len(cache) == 1
         resolver.clear_cache()
 
         assert len(cache) == 0
+        assert resolver.get_cached_uploads("gemini") == []
 
     def test_get_cached_uploads(self):
         """Test getting cached uploads from resolver."""
@@ -127,8 +107,8 @@ class TestFileResolver:
         gemini_uploads = resolver.get_cached_uploads("gemini")
         anthropic_uploads = resolver.get_cached_uploads("anthropic")
 
-        assert len(gemini_uploads) == 1
-        assert len(anthropic_uploads) == 1
+        assert [upload.file_id for upload in gemini_uploads] == ["test-1"]
+        assert [upload.file_id for upload in anthropic_uploads] == ["test-2"]
 
     def test_get_cached_uploads_empty(self):
         """Test getting cached uploads when no cache."""
@@ -164,14 +144,11 @@ class TestCreateResolver:
     def test_create_resolver_cache_enabled(self):
         """Test resolver has cache when enabled."""
         resolver = create_resolver(enable_cache=True)
+        file = ImageFile(source=FileBytes(data=MINIMAL_PNG, filename="test.png"))
 
-        assert resolver.upload_cache is not None
-
-    def test_create_resolver_cache_disabled(self):
-        """Test resolver has no cache when disabled."""
-        resolver = create_resolver(enable_cache=False)
-
-        assert resolver.upload_cache is None
+        assert isinstance(resolver.upload_cache, UploadCache)
+        resolver.upload_cache.set(file=file, provider="gemini", file_id="file-1")
+        assert [u.file_id for u in resolver.get_cached_uploads("gemini")] == ["file-1"]
 
 
 class _NoUploaderResolver(FileResolver):

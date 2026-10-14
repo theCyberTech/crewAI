@@ -172,7 +172,8 @@ class TestUploadCache:
 
         assert removed == 1
         assert len(cache) == 1
-        assert cache.get(file2, "gemini") is not None
+        assert cache.get(file1, "gemini") is None
+        assert cache.get(file2, "gemini").file_id == "valid"
 
     def test_clear(self):
         """Test clearing all entries."""
@@ -205,5 +206,5 @@ class TestUploadCache:
         gemini_uploads = cache.get_all_for_provider("gemini")
         anthropic_uploads = cache.get_all_for_provider("anthropic")
 
-        assert len(gemini_uploads) == 2
-        assert len(anthropic_uploads) == 1
+        assert sorted(u.file_id for u in gemini_uploads) == ["file-1", "file-2"]
+        assert [u.file_id for u in anthropic_uploads] == ["file-3"]

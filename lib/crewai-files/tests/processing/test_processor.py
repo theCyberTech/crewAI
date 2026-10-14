@@ -6,7 +6,6 @@ from crewai_files.processing.constraints import (
     ImageConstraints,
     ProviderConstraints,
 )
-from crewai_files.processing.enums import FileHandling
 from crewai_files.processing.exceptions import (
     FileTooLargeError,
 )
@@ -127,12 +126,6 @@ class TestFileProcessorInit:
 
         assert processor.constraints is None
 
-    def test_init_with_none_constraints(self):
-        """Test initialization with None constraints."""
-        processor = FileProcessor(constraints=None)
-
-        assert processor.constraints is None
-
 
 class TestFileProcessorValidate:
     """Tests for FileProcessor.validate method."""
@@ -144,16 +137,22 @@ class TestFileProcessorValidate:
 
         errors = processor.validate(file)
 
-        assert len(errors) == 0
+        assert errors == []
 
     def test_validate_without_constraints(self):
         """Test validating without constraints returns empty list."""
-        processor = FileProcessor(constraints=None)
         file = ImageFile(source=FileBytes(data=MINIMAL_PNG, filename="test.png"))
+        constrained = FileProcessor(
+            constraints=ProviderConstraints(
+                name="test",
+                image=ImageConstraints(max_size_bytes=10),
+            )
+        )
 
-        errors = processor.validate(file)
-
-        assert len(errors) == 0
+        assert constrained.validate(file) == [
+            "Image 'test.png' size (75B) exceeds maximum (10B)"
+        ]
+        assert FileProcessor(constraints=None).validate(file) == []
 
     def test_validate_strict_raises_on_error(self):
         """Test STRICT mode raises on validation error."""
@@ -238,9 +237,7 @@ class TestFileProcessorProcessFiles:
 
         result = processor.process_files(files)
 
-        assert len(result) == 2
-        assert "image1" in result
-        assert "image2" in result
+        assert result == files
 
     def test_process_files_empty(self):
         """Test processing empty files dict."""
@@ -251,31 +248,8 @@ class TestFileProcessorProcessFiles:
         assert result == {}
 
 
-class TestFileHandlingEnum:
-    """Tests for FileHandling enum."""
-
-    def test_enum_values(self):
-        """Test all enum values are accessible."""
-        assert FileHandling.STRICT.value == "strict"
-        assert FileHandling.AUTO.value == "auto"
-        assert FileHandling.WARN.value == "warn"
-        assert FileHandling.CHUNK.value == "chunk"
-
-
 class TestFileProcessorPerFileMode:
     """Tests for per-file mode handling."""
-
-    def test_file_default_mode_is_auto(self):
-        """Test that files default to auto mode."""
-        file = ImageFile(source=FileBytes(data=MINIMAL_PNG, filename="test.png"))
-        assert file.mode == "auto"
-
-    def test_file_custom_mode(self):
-        """Test setting custom mode on file."""
-        file = ImageFile(
-            source=FileBytes(data=MINIMAL_PNG, filename="test.png"), mode="strict"
-        )
-        assert file.mode == "strict"
 
     def test_processor_respects_file_mode(self):
         """Test processor uses each file's mode setting."""

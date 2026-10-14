@@ -1,5 +1,6 @@
 """Tests for resolved file types."""
 
+from dataclasses import FrozenInstanceError
 from datetime import datetime, timezone
 
 from crewai_files.core.resolved import (
@@ -23,7 +24,9 @@ class TestInlineBase64:
         )
 
         assert resolved.content_type == "image/png"
-        assert len(resolved.data) > 0
+        assert resolved.data == (
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        )
 
     def test_inline_base64_is_resolved_file(self):
         """Test InlineBase64 is a ResolvedFile."""
@@ -35,8 +38,10 @@ class TestInlineBase64:
         """Test InlineBase64 is immutable."""
         resolved = InlineBase64(content_type="image/png", data="abc123")
 
-        with pytest.raises(Exception):
+        with pytest.raises(FrozenInstanceError):
             resolved.data = "xyz789"
+
+        assert resolved.data == "abc123"
 
 
 class TestInlineBytes:
@@ -98,7 +103,10 @@ class TestFileReference:
             file_uri="https://generativelanguage.googleapis.com/v1/files/file-video123",
         )
 
-        assert resolved.file_uri is not None
+        assert (
+            resolved.file_uri
+            == "https://generativelanguage.googleapis.com/v1/files/file-video123"
+        )
 
     def test_file_reference_is_resolved_file(self):
         """Test FileReference is a ResolvedFile."""

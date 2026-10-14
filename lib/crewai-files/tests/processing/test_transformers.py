@@ -3,6 +3,7 @@
 import io
 from unittest.mock import patch
 
+from PIL import Image
 from crewai_files import ImageFile, PDFFile, TextFile
 from crewai_files.core.sources import FileBytes
 from crewai_files.processing.exceptions import ProcessingDependencyError
@@ -50,11 +51,7 @@ class TestResizeImage:
 
         result = resize_image(img, max_width=100, max_height=100)
 
-        dims = get_image_dimensions(result)
-        assert dims is not None
-        width, height = dims
-        assert width <= 100
-        assert height <= 100
+        assert get_image_dimensions(result) == (100, 75)
 
     def test_no_resize_if_within_bounds(self) -> None:
         """Test that small images are returned unchanged."""
@@ -101,6 +98,8 @@ class TestResizeImage:
         result = resize_image(img, max_width=100, max_height=100)
 
         assert isinstance(result, ImageFile)
+        assert result.filename == "test.png"
+        assert get_image_dimensions(result) == (100, 100)
 
     def test_raises_without_pillow(self) -> None:
         """Test that ProcessingDependencyError is raised without Pillow."""
@@ -150,6 +149,8 @@ class TestOptimizeImage:
         result = optimize_image(img, target_size_bytes=100)
 
         assert isinstance(result, ImageFile)
+        assert result.filename == "test.jpg"
+        assert result.read()[:3] == b"\xff\xd8\xff"
 
     def test_optimize_respects_min_quality(self) -> None:
         """Test that optimization stops at minimum quality."""
@@ -159,8 +160,11 @@ class TestOptimizeImage:
         # Request impossibly small size - should stop at min quality
         result = optimize_image(img, target_size_bytes=10, min_quality=50)
 
-        assert isinstance(result, ImageFile)
-        assert len(result.read()) > 10
+        expected = io.BytesIO()
+        Image.open(io.BytesIO(png_bytes)).save(
+            expected, format="JPEG", quality=50, optimize=True
+        )
+        assert result.read() == expected.getvalue()
 
 
 class TestChunkPdf:
@@ -204,8 +208,7 @@ class TestChunkPdf:
 
         result = list(chunk_pdf(pdf, max_pages=4, overlap_pages=1))
 
-        # With overlap, we get more chunks
-        assert len(result) >= 3
+        assert [get_pdf_page_count(chunk) for chunk in result] == [4, 4, 4, 1]
 
     def test_chunk_page_counts(self) -> None:
         """Test that each chunk has correct page count."""
@@ -228,8 +231,9 @@ class TestChunkText:
 
         result = list(chunk_text(text, max_chars=200, overlap_chars=0))
 
-        assert len(result) > 1
-        assert all(isinstance(chunk, TextFile) for chunk in result)
+        chunks = [chunk.read().decode() for chunk in result]
+        assert [len(chunk) for chunk in chunks] == [200, 200, 200, 200, 200, 200, 100]
+        assert "".join(chunks) == content
 
     def test_no_chunk_if_within_limit(self) -> None:
         """Test that small text files are returned unchanged."""
@@ -259,7 +263,11 @@ class TestChunkText:
 
         result = list(chunk_text(text, max_chars=200, overlap_chars=0))
 
-        assert all(chunk.filename.endswith(".py") for chunk in result)
+        assert [chunk.filename for chunk in result] == [
+            "script_chunk_0.py",
+            "script_chunk_1.py",
+            "script_chunk_2.py",
+        ]
 
     def test_chunk_prefers_newline_boundaries(self) -> None:
         """Test that chunking prefers to split at newlines."""
@@ -270,14 +278,11 @@ class TestChunkText:
             chunk_text(text, max_chars=25, overlap_chars=0, split_on_newlines=True)
         )
 
-        # Should split at newline boundaries
-        for chunk in result:
-            chunk_text_content = chunk.read().decode()
-            # Chunks should end at newlines (except possibly the last)
-            if chunk != result[-1]:
-                assert (
-                    chunk_text_content.endswith("\n") or len(chunk_text_content) <= 25
-                )
+        assert [chunk.read().decode() for chunk in result] == [
+            "Line one\nLine two\n",
+            "Line three\nLine four\n",
+            "Line five",
+        ]
 
     def test_chunk_with_overlap(self) -> None:
         """Test chunking with overlapping characters."""
@@ -286,8 +291,12 @@ class TestChunkText:
 
         result = list(chunk_text(text, max_chars=30, overlap_chars=5))
 
-        # With overlap, chunks should share some content
-        assert len(result) >= 3
+        assert [chunk.read().decode() for chunk in result] == [
+            content[0:30],
+            content[25:55],
+            content[50:80],
+            content[75:100],
+        ]
 
     def test_chunk_overlap_larger_than_max_chars(self) -> None:
         """Test that overlap > max_chars doesn't cause infinite loop."""
@@ -297,8 +306,7 @@ class TestChunkText:
         # overlap_chars > max_chars should still work (just with max overlap)
         result = list(chunk_text(text, max_chars=20, overlap_chars=50))
 
-        assert len(result) > 1
-        # Should still complete without hanging
+        assert [len(chunk.read()) for chunk in result] == [20] * 81
 
 
 class TestGetImageDimensions:
@@ -324,12 +332,11 @@ class TestGetImageDimensions:
     def test_returns_none_without_pillow(self) -> None:
         """Test that None is returned when Pillow is not installed."""
         png_bytes = create_test_png(100, 100)
-        ImageFile(source=FileBytes(data=png_bytes, filename="test.png"))
+        img = ImageFile(source=FileBytes(data=png_bytes, filename="test.png"))
 
         with patch.dict("sys.modules", {"PIL": None}):
-            # Can't easily test this without unloading module
-            # Just verify the function handles the case gracefully
-            pass
+            assert get_image_dimensions(img) is None
+        assert get_image_dimensions(img) == (100, 100)
 
 
 class TestGetPdfPageCount:

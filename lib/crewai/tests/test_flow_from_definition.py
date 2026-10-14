@@ -22,6 +22,7 @@ from crewai.events.types.flow_events import (
 )
 from crewai.flow import Flow, and_, human_feedback, listen, or_, router, start
 from crewai.flow.async_feedback import HumanFeedbackPending, PendingFeedbackContext
+from crewai.flow.expressions import ExpressionError
 from crewai.flow.flow import FlowState
 from crewai.flow.flow_config import flow_config
 from crewai.flow.flow_definition import FlowConfigDefinition, FlowDefinition
@@ -80,8 +81,13 @@ def test_inline_agent_definition_omits_unspecified_runtime_controls():
 
     dumped = definition.model_dump(mode="python", exclude_none=True)
 
-    for field_name in AGENT_RUNTIME_CONTROL_FIELDS:
-        assert field_name not in dumped
+    assert dumped == {
+        "role": "Analyst",
+        "goal": "Answer questions",
+        "backstory": "Knows things.",
+        "settings": {},
+        "input": "${state.question}",
+    }
 
 
 class StaticSearchTool(BaseTool):
@@ -596,8 +602,14 @@ def test_definition_flow_events_use_definition_name():
     definition = FlowDefinition.from_declaration(contents=CHAIN_YAML)
     flow = Flow.from_declaration(contents=definition)
     _, events = _run_with_events(flow)
-    assert events
-    assert all(flow_name == "ChainFlow" for _, _, flow_name in events)
+    assert events == [
+        ("MethodExecutionStartedEvent", "begin", "ChainFlow"),
+        ("MethodExecutionFinishedEvent", "begin", "ChainFlow"),
+        ("MethodExecutionStartedEvent", "shout", "ChainFlow"),
+        ("MethodExecutionFinishedEvent", "shout", "ChainFlow"),
+        ("MethodExecutionStartedEvent", "confirm", "ChainFlow"),
+        ("MethodExecutionFinishedEvent", "confirm", "ChainFlow"),
+    ]
 
 
 def test_definition_method_without_action_is_invalid():
@@ -3096,6 +3108,13 @@ def test_expression_now_passes_root_validation():
     Expression("string(now().getFullYear())").validate_expression(
         allowed_roots=["state", "outputs"]
     )
+
+    with pytest.raises(
+        ExpressionError, match="unknown CEL root at CEL expression: 'inputs'"
+    ):
+        Expression("string(inputs.year)").validate_expression(
+            allowed_roots=["state", "outputs"]
+        )
 
 
 def test_expression_from_flow_uses_run_frozen_now():

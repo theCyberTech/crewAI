@@ -211,6 +211,20 @@ def test_validate_function_signature(basic_function, schema_class):
 
     tool._validate_function_signature()
 
+    class MissingParam1Schema(BaseModel):
+        param2: int = Field(default=0)
+
+    with pytest.raises(
+        ValueError,
+        match="Required function parameter 'param1' not found in args_schema",
+    ):
+        CrewStructuredTool(
+            name="test_tool",
+            description="Test tool",
+            func=basic_function,
+            args_schema=MissingParam1Schema,
+        )
+
 
 @pytest.mark.asyncio
 async def test_ainvoke(basic_function):

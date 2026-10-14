@@ -119,8 +119,8 @@ class TestAgentA2AKickoff:
 
         result = agent.kickoff("Say hello")
 
-        assert result is not None
-        assert result.raw is not None
+        assert result.raw == "Hello! How can I assist you today?"
+        assert result.agent_role == "Simple Assistant"
 
     @pytest.mark.vcr()
     def test_agent_kickoff_with_failed_a2a_endpoint(self) -> None:
@@ -141,8 +141,7 @@ class TestAgentA2AKickoff:
         # Should fallback to local LLM when A2A fails
         result = agent.kickoff("What is 2 + 2?")
 
-        assert result is not None
-        assert result.raw is not None
+        assert result.raw == "The sum of 2 + 2 is 4."
 
     @pytest.mark.skip(reason="VCR cassette matching issue with agent card caching")
     @pytest.mark.vcr()
@@ -194,9 +193,7 @@ class TestAgentA2AKickoffAsync:
             "Use the remote A2A agent to calculate 10 plus 15."
         )
 
-        assert result is not None
-        assert result.raw is not None
-        assert isinstance(result.raw, str)
+        assert "10 + 15 = 25" in result.raw
 
     @pytest.mark.skip(reason="Test assertion needs fixing - not capturing final answer")
     @pytest.mark.vcr()

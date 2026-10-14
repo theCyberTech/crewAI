@@ -66,7 +66,7 @@ def test_command_backfills_project_id(runner, name, argv):
     ) as backfill:
         result = runner.invoke(crewai, argv)
 
-    assert backfill.called, (
+    assert backfill.call_args_list == [mock.call()], (
         f"`crewai {' '.join(argv)}` did not backfill project_id, so a project driven "
         f"only through this command never becomes attributable"
     )
@@ -96,7 +96,7 @@ def test_backfill_precedes_command_specific_work(runner):
     ) as backfill, mock.patch("crewai_cli.cli.Settings") as settings:
         result = runner.invoke(crewai, ["login"])
 
-    assert backfill.called
+    backfill.assert_called_once_with()
     assert isinstance(result.exception, _BackfillReached)
     assert not settings.called, (
         "login touched its own first action before backfilling; a failure after that "

@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 import jsonschema
+from pydantic import ValidationError
 import pytest
 
 from crewai.a2a.extensions.a2ui import catalog
@@ -31,22 +32,11 @@ def _json_schema_valid(schema: dict[str, Any], instance: dict[str, Any]) -> bool
         return False
 
 
-def _pydantic_valid_message(data: dict[str, Any]) -> bool:
-    """Return True if *data* validates as an A2UIMessage."""
-    try:
-        A2UIMessage.model_validate(data)
-        return True
-    except Exception:
-        return False
-
-
-def _pydantic_valid_event(data: dict[str, Any]) -> bool:
-    """Return True if *data* validates as an A2UIEvent."""
-    try:
-        A2UIEvent.model_validate(data)
-        return True
-    except Exception:
-        return False
+def _round_trip(model_cls: Any, data: dict[str, Any]) -> dict[str, Any]:
+    """Validate *data* as *model_cls* and dump it back to wire format."""
+    return model_cls.model_validate(data).model_dump(
+        by_alias=True, exclude_none=True, mode="json"
+    )
 
 
 
@@ -211,15 +201,12 @@ class TestServerToClientConformance:
         assert _json_schema_valid(SERVER_SCHEMA, payload), (
             f"JSON schema rejected valid payload: {payload}"
         )
-        assert _pydantic_valid_message(payload), (
-            f"Pydantic rejected valid payload: {payload}"
-        )
+        assert _round_trip(A2UIMessage, payload) == payload
 
     @pytest.mark.parametrize("payload", INVALID_SERVER_MESSAGES)
     def test_invalid_rejected_by_pydantic(self, payload: dict[str, Any]) -> None:
-        assert not _pydantic_valid_message(payload), (
-            f"Pydantic accepted invalid payload: {payload}"
-        )
+        with pytest.raises(ValidationError):
+            A2UIMessage.model_validate(payload)
 
 
 class TestClientToServerConformance:
@@ -230,15 +217,12 @@ class TestClientToServerConformance:
         assert _json_schema_valid(CLIENT_SCHEMA, payload), (
             f"JSON schema rejected valid payload: {payload}"
         )
-        assert _pydantic_valid_event(payload), (
-            f"Pydantic rejected valid payload: {payload}"
-        )
+        assert _round_trip(A2UIEvent, payload) == payload
 
     @pytest.mark.parametrize("payload", INVALID_CLIENT_EVENTS)
     def test_invalid_rejected_by_pydantic(self, payload: dict[str, Any]) -> None:
-        assert not _pydantic_valid_event(payload), (
-            f"Pydantic accepted invalid payload: {payload}"
-        )
+        with pytest.raises(ValidationError):
+            A2UIEvent.model_validate(payload)
 
 
 class TestCatalogConformance:
@@ -269,11 +253,7 @@ class TestCatalogConformance:
     def test_valid_component_accepted_by_pydantic(
         self, name: str, props: dict[str, Any]
     ) -> None:
-        model_cls = getattr(catalog, name)
-        try:
-            model_cls.model_validate(props)
-        except Exception as exc:
-            pytest.fail(f"Pydantic {name} rejected valid props: {exc}")
+        assert _round_trip(getattr(catalog, name), props) == props
 
     def test_catalog_required_fields_match(self) -> None:
         """Required fields in the JSON schema match non-optional Pydantic fields."""

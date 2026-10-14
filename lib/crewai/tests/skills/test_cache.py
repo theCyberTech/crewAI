@@ -56,8 +56,8 @@ class TestSkillCacheManager:
         archive = _make_tar_gz({"SKILL.md": "---\nname: my-skill\n---\nHello"})
         dest = cache.store("acme", "my-skill", "1.0.0", archive)
 
-        assert dest.is_dir()
-        assert (dest / "SKILL.md").exists()
+        assert dest == tmp_path / "acme" / "my-skill"
+        assert (dest / "SKILL.md").read_text() == "---\nname: my-skill\n---\nHello"
 
         retrieved = cache.get_cached_path("acme", "my-skill")
         assert retrieved == dest
@@ -162,8 +162,11 @@ class TestSkillCacheManager:
         cache.store("other-org", "skill-c", None, archive)
 
         entries = cache.list_cached()
-        names = {e["name"] for e in entries}
-        assert names == {"skill-a", "skill-b", "skill-c"}
+        assert [(e["org"], e["name"], e["version"]) for e in entries] == [
+            ("acme", "skill-a", "1.0.0"),
+            ("acme", "skill-b", "0.1.0"),
+            ("other-org", "skill-c", None),
+        ]
 
     def test_invalidate_existing(self, tmp_path: Path) -> None:
         cache = SkillCacheManager(cache_root=tmp_path)

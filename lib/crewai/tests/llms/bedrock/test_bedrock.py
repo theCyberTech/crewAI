@@ -327,8 +327,13 @@ def test_multiple_bedrock_calls_in_crew():
     """
     bedrock_llm = LLM(model="bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0")
 
-    with patch.object(bedrock_llm, 'call') as mock_call:
-        mock_call.return_value = "Task completed."
+    user_prompts = []
+
+    def record_call(messages, **kwargs):
+        user_prompts.append(messages[1]["content"])
+        return "Task completed."
+
+    with patch.object(bedrock_llm, 'call', side_effect=record_call):
 
         agent = Agent(
             role="Multi-task Agent",
@@ -355,12 +360,10 @@ def test_multiple_bedrock_calls_in_crew():
         )
         crew.kickoff()
 
-        assert mock_call.call_count >= 2  # At least one call per task
-
-        for call in mock_call.call_args_list:
-            assert len(call[0]) > 0
-            messages = call[0][0]
-            assert messages is not None
+        assert len(user_prompts) == 2
+        assert "Current Task: First task" in user_prompts[0]
+        assert "Current Task: Second task" in user_prompts[1]
+        assert "This is the context you're working with:\nTask completed." in user_prompts[1]
 
 def test_bedrock_completion_with_tools():
     """
@@ -396,14 +399,22 @@ def test_bedrock_completion_with_tools():
 
         crew.kickoff()
 
-        assert mock_call.called
-
-        call_args = mock_call.call_args
-        call_kwargs = call_args[1] if len(call_args) > 1 else {}
-
-        if 'tools' in call_kwargs:
-            assert call_kwargs['tools'] is not None
-            assert len(call_kwargs['tools']) > 0
+        assert mock_call.call_args.kwargs["tools"] == [
+            {
+                "type": "function",
+                "function": {
+                    "name": "sample_tool",
+                    "description": "A sample tool for testing",
+                    "parameters": {
+                        "additionalProperties": False,
+                        "properties": {"query": {"title": "Query", "type": "string"}},
+                        "required": ["query"],
+                        "type": "object",
+                    },
+                    "strict": True,
+                },
+            }
+        ]
 
 
 @pytest.mark.timeout(180)
@@ -421,9 +432,12 @@ def test_bedrock_raises_error_when_model_not_found(bedrock_mocks):
     }
     mock_client.converse.side_effect = ClientError(error_response, 'converse')
 
-    llm = LLM(model="bedrock/model-doesnt-exist")
+    llm = LLM(model="bedrock/anthropic.claude-doesnt-exist-v1:0")
 
-    with pytest.raises(Exception):  # Should raise some error for unsupported model
+    with pytest.raises(
+        ValueError,
+        match="Model anthropic.claude-doesnt-exist-v1:0 not found: Could not resolve the foundation model",
+    ):
         llm.call("Hello")
 
 
@@ -977,11 +991,13 @@ def test_bedrock_agent_kickoff_structured_output_without_tools():
         response_format=AnalysisResult,
     )
 
-    assert result.pydantic is not None, "Expected pydantic output but got None"
     assert isinstance(result.pydantic, AnalysisResult), f"Expected AnalysisResult but got {type(result.pydantic)}"
-    assert result.pydantic.topic, "Topic should not be empty"
-    assert len(result.pydantic.key_points) > 0, "Should have at least one key point"
-    assert result.pydantic.summary, "Summary should not be empty"
+    assert result.pydantic.topic == "Benefits of Remote Work"
+    assert len(result.pydantic.key_points) == 6
+    assert result.pydantic.key_points[0].startswith("Improved Work-Life Balance:")
+    assert result.pydantic.summary.startswith(
+        "Remote work offers a compelling mix of personal, financial, and organizational advantages."
+    )
 
 
 @pytest.mark.vcr()
@@ -1307,4 +1323,5 @@ def test_bedrock_no_cache_tokens_defaults_to_zero():
         mock_converse.return_value = mock_response
 
         llm.call("Hello")
+        assert llm._token_usage['prompt_tokens'] == 60
         assert llm._token_usage['cached_prompt_tokens'] == 0

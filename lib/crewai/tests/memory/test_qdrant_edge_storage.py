@@ -70,7 +70,7 @@ def test_delete_count(storage: QdrantEdgeStorage) -> None:
     storage.save([r])
     assert storage.count() == 1
     n = storage.delete(scope_prefix="/")
-    assert n >= 1
+    assert n == 1
     assert storage.count() == 0
 
 
@@ -284,8 +284,7 @@ def test_orphaned_shard_cleanup(tmp_path: Path) -> None:
     s2 = _make_storage(str(base))
     assert not orphan_path.exists()
     results = s2.search([0.5, 0.5, 0.5, 0.5], limit=5)
-    assert len(results) >= 1
-    assert any(r.content == "orphaned" for r, _ in results)
+    assert [r.content for r, _ in results] == ["orphaned"]
     s2.close()
 
 
@@ -312,7 +311,9 @@ def test_memory_with_qdrant_edge(tmp_path: Path) -> None:
     assert r.content == "We decided to use Qdrant Edge."
 
     matches = m.recall("Qdrant", scope="/project", limit=5, depth="shallow")
-    assert len(matches) >= 1
+    assert [match.record.content for match in matches] == [
+        "We decided to use Qdrant Edge."
+    ]
     m.close()
 
 

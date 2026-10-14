@@ -11,5 +11,4 @@ async def test_acall_delegates_to_responses():
     llm = LLM(model="azure/gpt-5.2-chat", api="responses")
     result = await llm.acall("Say hello in one sentence.")
 
-    assert isinstance(result, str)
-    assert len(result) > 0
+    assert result == "Hello! \U0001f44b"

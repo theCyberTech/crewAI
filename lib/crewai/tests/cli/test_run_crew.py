@@ -77,7 +77,7 @@ def test_execute_command_omits_env_var_when_filename_absent(
     _execute_uv_script("run_crew", entity_type="crew")
 
     _, kwargs = subprocess_run.call_args
-    assert "CREWAI_TRAINED_AGENTS_FILE" not in kwargs["env"]
+    assert kwargs["env"] == {"EXISTING": "value"}
 
 
 def test_missing_input_names_scans_agent_and_task_placeholders() -> None:

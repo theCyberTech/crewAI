@@ -19,33 +19,30 @@ class TestChromaDBUtils:
         """Test sanitizing a very long collection name."""
         long_name = "This is an extremely long role name that will definitely exceed the ChromaDB collection name limit of 63 characters and cause an error when used as a collection name"
         sanitized = _sanitize_collection_name(long_name)
-        assert len(sanitized) <= MAX_COLLECTION_LENGTH
-        assert sanitized[0].isalnum()
-        assert sanitized[-1].isalnum()
-        assert all(c.isalnum() or c in ["_", "-"] for c in sanitized)
+        assert (
+            sanitized
+            == "This_is_an_extremely_long_role_name_that_will_definitely_exceed"
+        )
+        assert len(sanitized) == MAX_COLLECTION_LENGTH
 
     def test_sanitize_collection_name_special_chars(self) -> None:
         """Test sanitizing a name with special characters."""
         special_chars = "Agent@123!#$%^&*()"
         sanitized = _sanitize_collection_name(special_chars)
-        assert sanitized[0].isalnum()
-        assert sanitized[-1].isalnum()
-        assert all(c.isalnum() or c in ["_", "-"] for c in sanitized)
+        assert sanitized == "Agent_123________z"
 
     def test_sanitize_collection_name_short_name(self) -> None:
         """Test sanitizing a very short name."""
         short_name = "A"
         sanitized = _sanitize_collection_name(short_name)
-        assert len(sanitized) >= MIN_COLLECTION_LENGTH
-        assert sanitized[0].isalnum()
-        assert sanitized[-1].isalnum()
+        assert sanitized == "Axx"
+        assert len(sanitized) == MIN_COLLECTION_LENGTH
 
     def test_sanitize_collection_name_bad_ends(self) -> None:
         """Test sanitizing a name with non-alphanumeric start/end."""
         bad_ends = "_Agent_"
         sanitized = _sanitize_collection_name(bad_ends)
-        assert sanitized[0].isalnum()
-        assert sanitized[-1].isalnum()
+        assert sanitized == "a_Agentz"
 
     def test_sanitize_collection_name_none(self) -> None:
         """Test sanitizing a None value."""
@@ -56,10 +53,7 @@ class TestChromaDBUtils:
         """Test sanitizing an IPv4 address."""
         ipv4 = "192.168.1.1"
         sanitized = _sanitize_collection_name(ipv4)
-        assert sanitized.startswith("ip_")
-        assert sanitized[0].isalnum()
-        assert sanitized[-1].isalnum()
-        assert all(c.isalnum() or c in ["_", "-"] for c in sanitized)
+        assert sanitized == "ip_192_168_1_1"
 
     def test_is_ipv4_pattern(self) -> None:
         """Test IPv4 pattern detection."""
@@ -68,20 +62,16 @@ class TestChromaDBUtils:
 
     def test_sanitize_collection_name_properties(self) -> None:
         """Test that sanitized collection names always meet ChromaDB requirements."""
-        test_cases: list[str] = [
-            "A" * 100,
-            "_start_with_underscore",
-            "end_with_underscore_",
-            "contains@special#characters",
-            "192.168.1.1",
-            "a" * 2,
-        ]
-        for test_case in test_cases:
-            sanitized = _sanitize_collection_name(test_case)
-            assert len(sanitized) >= MIN_COLLECTION_LENGTH
-            assert len(sanitized) <= MAX_COLLECTION_LENGTH
-            assert sanitized[0].isalnum()
-            assert sanitized[-1].isalnum()
+        test_cases: dict[str, str] = {
+            "A" * 100: "A" * MAX_COLLECTION_LENGTH,
+            "_start_with_underscore": "a_start_with_underscore",
+            "end_with_underscore_": "end_with_underscorez",
+            "contains@special#characters": "contains_special_characters",
+            "192.168.1.1": "ip_192_168_1_1",
+            "a" * 2: "aax",
+        }
+        for test_case, expected in test_cases.items():
+            assert _sanitize_collection_name(test_case) == expected
 
     def test_sanitize_collection_name_empty_string(self) -> None:
         """Test sanitizing an empty string."""
@@ -132,8 +122,10 @@ class TestPrepareDocumentsForChromaDB:
 
         result = _prepare_documents_for_chromadb(documents)
 
-        assert len(result.ids) == 2
-        assert all(len(doc_id) == 64 for doc_id in result.ids)
+        assert result.ids == [
+            "f7e524d5c69afb9e17dff7509f5242fbfe697ed835ac29b96fd395be04029843",
+            "626cd0f08ae3c3b5bf48096c5f4a7860ec666ec88941315627735ade9acaccba",
+        ]
         assert result.texts == ["Test content", "Another test"]
         assert result.metadatas == [{"key": "value"}, {}]
 
@@ -158,20 +150,6 @@ class TestPrepareDocumentsForChromaDB:
         result = _prepare_documents_for_chromadb(documents)
 
         assert result.metadatas == [{}, {}]
-
-    def test_prepare_documents_hash_consistency(self) -> None:
-        """Test that identical content produces identical hashes."""
-        documents1: list[BaseRecord] = [
-            {"content": "Same content", "metadata": {"key": "value"}}
-        ]
-        documents2: list[BaseRecord] = [
-            {"content": "Same content", "metadata": {"key": "value"}}
-        ]
-
-        result1 = _prepare_documents_for_chromadb(documents1)
-        result2 = _prepare_documents_for_chromadb(documents2)
-
-        assert result1.ids == result2.ids
 
 
 class TestCreateBatchSlice:

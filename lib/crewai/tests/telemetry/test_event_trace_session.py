@@ -180,6 +180,7 @@ def test_session_owns_root_even_under_application_span():
         )
         crewai_event_bus.emit(None, complete_call("call"))
     (span,) = exporter.get_finished_spans()
+    assert span.attributes["crewai.execution_uuid"] == "execution"
     assert span.parent is None
     assert span.context.trace_id != application.get_span_context().trace_id
     assert get_trace_session() is None and get_telemetry_context() is None
@@ -230,12 +231,14 @@ def test_shutdown_cleans_subscriptions_and_provider_after_event_drain_timeout(
     exporter = InMemorySpanExporter()
     session = TraceSession("execution", [exporter])
     registered = tuple(session._registrations)
+    assert LLMCallStartedEvent in {event_type for event_type, _ in registered}
     monkeypatch.setattr(crewai_event_bus, "flush", lambda timeout: False)
-    assert not session.shutdown()
-    assert session._closed
-    assert not session._registrations and not session.context._span_refs
+    assert session.shutdown() is False
+    assert session._closed is True
+    assert session._registrations == []
+    assert session.context._span_refs == {}
     assert all(
         handler not in crewai_event_bus._sync_handlers.get(event_type, ())
         for event_type, handler in registered
     )
-    assert session.shutdown()
+    assert session.shutdown() is True

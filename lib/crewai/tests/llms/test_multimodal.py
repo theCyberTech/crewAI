@@ -372,7 +372,7 @@ class TestMultipleFilesFormatting:
 
         result = format_multimodal_content(files, getattr(llm, "provider", None) or llm.model)
 
-        assert len(result) == 1
+        assert [part["type"] for part in result] == ["image_url"]
 
     def test_format_empty_files_dict(self) -> None:
         """Test empty files dict returns empty list."""

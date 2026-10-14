@@ -237,8 +237,7 @@ class TestLoadCrew:
         assert len(crew.agents) == 2
         assert len(crew.tasks) == 2
         # Second task should have context referencing first task
-        assert crew.tasks[1].context is not None
-        assert len(crew.tasks[1].context) == 1
+        assert crew.tasks[1].context == [crew.tasks[0]]
 
     def test_crew_hierarchical_process(self, tmp_path: Path):
         agents_dir = tmp_path / "agents"
@@ -440,7 +439,7 @@ class TestLoadCrew:
         task = crew.tasks[0]
         assert task.output_json is not None
         assert "summary" in task.output_json.model_fields
-        assert task.response_model is not None
+        assert list(task.response_model.model_fields) == ["summary"]
         assert task.create_directory is False
         assert task.human_input is True
         assert task.markdown is True
@@ -482,8 +481,10 @@ class TestLoadCrew:
 
         from crewai.tasks.conditional_task import ConditionalTask
 
+        assert not isinstance(crew.tasks[0], ConditionalTask)
         assert isinstance(crew.tasks[1], ConditionalTask)
-        assert crew.tasks[1].should_execute(None)
+        assert crew.tasks[1].condition.__name__ == "always_true"
+        assert crew.tasks[1].should_execute(None) is True
 
     def test_crew_loads_custom_agent_and_task_types(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

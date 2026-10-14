@@ -92,8 +92,8 @@ async def test_multiple_async_handlers():
         event = AsyncTestEvent(type="async_test")
         await crewai_event_bus.aemit("test_source", event)
 
-        assert len(received_events_1) == 1
-        assert len(received_events_2) == 1
+        assert received_events_1 == [event]
+        assert received_events_2 == [event]
 
 
 @pytest.mark.asyncio
@@ -122,8 +122,8 @@ async def test_mixed_sync_and_async_handlers():
         await asyncio.wait_for(sync_done.wait(), timeout=5)
         await asyncio.wait_for(async_done.wait(), timeout=5)
 
-        assert len(sync_events) == 1
-        assert len(async_events) == 1
+        assert sync_events == [event]
+        assert async_events == [event]
 
 
 @pytest.mark.asyncio
@@ -150,8 +150,13 @@ async def test_async_handler_error_handling():
 @pytest.mark.asyncio
 async def test_aemit_with_no_handlers():
     with crewai_event_bus.scoped_handlers():
-        event = AsyncTestEvent(type="no_handlers")
-        await crewai_event_bus.aemit("test_source", event)
+        first = AsyncTestEvent(type="no_handlers")
+        second = AsyncTestEvent(type="no_handlers")
+        await crewai_event_bus.aemit("test_source", first)
+        await crewai_event_bus.aemit("test_source", second)
+
+    assert second.previous_event_id == first.event_id
+    assert second.emission_sequence == first.emission_sequence + 1
 
 
 @pytest.mark.asyncio

@@ -15,6 +15,8 @@ from crewai.task import Task
 
 MOCK_TARGET = "crewai.utilities.prompts.datetime"
 FROZEN_NOW = datetime(2025, 1, 1)
+SYSTEM_PROMPT = "You are test_agent. test_backstory\nYour personal goal is: test_goal"
+DATED_SYSTEM_PROMPT = f"{SYSTEM_PROMPT}\n\nCurrent Date: 2025-01-01"
 
 
 class _RecordingLLM(BaseLLM):
@@ -85,9 +87,7 @@ def test_inject_date_reaches_system_prompt_on_kickoff() -> None:
         mock_datetime.now.return_value = FROZEN_NOW
         agent.kickoff("What is the date today?")
 
-    system_prompts = llm.contents_for("system")
-    assert system_prompts
-    assert all("Current Date: 2025-01-01" in prompt for prompt in system_prompts)
+    assert llm.contents_for("system") == [DATED_SYSTEM_PROMPT]
 
 
 def test_inject_date_reaches_system_prompt_on_task_execution() -> None:
@@ -99,9 +99,7 @@ def test_inject_date_reaches_system_prompt_on_task_execution() -> None:
         mock_datetime.now.return_value = FROZEN_NOW
         agent.execute_task(_task(agent))
 
-    system_prompts = llm.contents_for("system")
-    assert system_prompts
-    assert all("Current Date: 2025-01-01" in prompt for prompt in system_prompts)
+    assert llm.contents_for("system") == [DATED_SYSTEM_PROMPT]
 
 
 def test_inject_date_reaches_prompt_without_system_prompt() -> None:
@@ -134,7 +132,7 @@ def test_without_inject_date_no_date_is_sent() -> None:
 
     agent.kickoff("What is the date today?")
 
-    assert llm.calls
+    assert llm.contents_for("system") == [SYSTEM_PROMPT]
     assert "Current Date:" not in llm.everything_sent
 
 
@@ -160,6 +158,4 @@ def test_inject_date_does_not_accumulate_across_runs() -> None:
         agent.execute_task(task)
         agent.execute_task(task)
 
-    assert all(
-        prompt.count("Current Date:") == 1 for prompt in llm.contents_for("system")
-    )
+    assert llm.contents_for("system") == [DATED_SYSTEM_PROMPT, DATED_SYSTEM_PROMPT]

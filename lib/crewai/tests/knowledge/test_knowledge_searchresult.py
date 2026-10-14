@@ -1,7 +1,7 @@
 """Tests for Knowledge SearchResult type conversion and integration."""
 
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from crewai.knowledge.knowledge import Knowledge  # type: ignore[import-untyped]
@@ -69,8 +69,10 @@ def test_knowledge_query_with_empty_results() -> None:
 
         results = knowledge.query(["nonexistent query"])
 
-        assert isinstance(results, list)
-        assert len(results) == 0
+        assert results == []
+        mock_storage.search.assert_called_once_with(
+            ["nonexistent query"], limit=5, score_threshold=0.6
+        )
 
 
 def test_extract_knowledge_context_with_searchresult() -> None:
@@ -83,15 +85,10 @@ def test_extract_knowledge_context_with_searchresult() -> None:
 
     context = extract_knowledge_context(search_results)
 
-    assert "Additional Information:" in context
-    assert "Python is great for AI" in context
-    assert "Machine learning algorithms" in context
-    assert "Deep learning frameworks" in context
-
-    expected_content = (
-        "Python is great for AI\nMachine learning algorithms\nDeep learning frameworks"
+    assert context == (
+        "Additional Information: Python is great for AI\n"
+        "Machine learning algorithms\nDeep learning frameworks"
     )
-    assert expected_content in context
 
 
 def test_extract_knowledge_context_with_empty_content() -> None:
@@ -119,10 +116,7 @@ def test_extract_knowledge_context_filters_invalid_results() -> None:
 
     context = extract_knowledge_context(search_results)
 
-    assert "Additional Information:" in context
-    assert "Valid content 1" in context
-    assert "Valid content 2" in context
-    assert context.count("\n") == 1
+    assert context == "Additional Information: Valid content 1\nValid content 2"
 
 
 @patch("crewai.rag.config.utils.get_rag_client")
@@ -159,6 +153,10 @@ def test_knowledge_add_sources_integration() -> None:
 
         for source in sources:
             assert source.storage == mock_storage
+        assert mock_storage.save.call_args_list == [
+            call(["Content 1"]),
+            call(["Content 2"]),
+        ]
 
 
 def test_knowledge_reset_integration() -> None:
@@ -172,7 +170,7 @@ def test_knowledge_reset_integration() -> None:
 
         knowledge.reset()
 
-        mock_storage.reset.assert_called_once()
+        mock_storage.reset.assert_called_once_with()
 
 
 @patch("crewai.rag.config.utils.get_rag_client")

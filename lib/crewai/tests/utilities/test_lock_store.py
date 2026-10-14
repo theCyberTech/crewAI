@@ -8,7 +8,9 @@ portalocker to handle actual locking mechanics.
 from __future__ import annotations
 
 from contextlib import contextmanager
+import os
 import sys
+import tempfile
 from unittest import mock
 
 import pytest
@@ -57,8 +59,12 @@ def test_uses_file_lock_when_redis_unavailable():
         with lock("file_test"):
             pass
 
-    mock_lock.assert_called_once()
-    assert "crewai:" in mock_lock.call_args.args[0]
+    mock_lock.assert_called_once_with(
+        os.path.join(
+            tempfile.gettempdir(), "crewai:2e9b940a5f143cc42461fab59f647278.lock"
+        ),
+        timeout=120,
+    )
 
 
 def test_uses_redis_lock_when_redis_available(monkeypatch):
@@ -70,10 +76,11 @@ def test_uses_redis_lock_when_redis_available(monkeypatch):
         with lock("redis_test"):
             pass
 
-    mock_redis_lock.assert_called_once()
-    kwargs = mock_redis_lock.call_args.kwargs
-    assert kwargs["channel"].startswith("crewai:")
-    assert kwargs["connection"] is fake_conn
+    mock_redis_lock.assert_called_once_with(
+        channel="crewai:4a6bcf67a25a0429a061097bbb3e8d57",
+        connection=fake_conn,
+        timeout=120,
+    )
 
 
 # custom backend
@@ -110,4 +117,9 @@ def test_clearing_backend_restores_default():
         with lock("after_clear"):
             pass
 
-    mock_lock.assert_called_once()
+    mock_lock.assert_called_once_with(
+        os.path.join(
+            tempfile.gettempdir(), "crewai:44dc79cac129496a5c71d89d9e51780c.lock"
+        ),
+        timeout=120,
+    )

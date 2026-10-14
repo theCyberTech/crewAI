@@ -103,7 +103,8 @@ def test_task_guardrails_round_trip_through_model_validate() -> None:
         dumped = task.model_dump(mode="json", exclude={"id"})
     if isinstance(dumped.get("agent"), dict):
         dumped["agent"].pop("id", None)
-    Task.model_validate(dumped)
+    restored = Task.model_validate(dumped)
+    assert restored.guardrails == ["also check this"]
 
 
 def test_agent_model_dump_json_with_callable_guardrail() -> None:
@@ -116,6 +117,9 @@ def test_agent_model_dump_json_with_callable_guardrail() -> None:
     with pytest.warns(UserWarning, match="cannot be JSON-serialized"):
         dumped = agent.model_dump(mode="json")
     assert dumped["guardrail"] is None
+
+    string_agent = Agent(role="r", goal="g", backstory="b", guardrail="be concise")
+    assert string_agent.model_dump(mode="json")["guardrail"] == "be concise"
 
 
 def test_lite_agent_model_dump_json_with_callable_guardrail() -> None:

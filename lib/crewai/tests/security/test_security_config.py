@@ -2,6 +2,7 @@
 
 from datetime import datetime
 import json
+import uuid
 
 from crewai.security import Fingerprint, SecurityConfig
 
@@ -10,19 +11,17 @@ def test_security_config_creation_with_defaults():
     """Test creating a SecurityConfig with default values."""
     config = SecurityConfig()
 
-    assert config.fingerprint is not None
     assert isinstance(config.fingerprint, Fingerprint)
-    assert config.fingerprint.uuid_str is not None
+    assert config.fingerprint.metadata == {}
 
 
 def test_security_config_fingerprint_generation():
     """Test that SecurityConfig automatically generates fingerprints."""
     config = SecurityConfig()
+    other_config = SecurityConfig()
 
-    assert config.fingerprint is not None
-    assert isinstance(config.fingerprint, Fingerprint)
-    assert isinstance(config.fingerprint.uuid_str, str)
-    assert len(config.fingerprint.uuid_str) > 0
+    assert uuid.UUID(config.fingerprint.uuid_str).version == 4
+    assert config.fingerprint.uuid_str != other_config.fingerprint.uuid_str
 
 
 def test_security_config_init_params():
@@ -59,15 +58,10 @@ def test_security_config_from_dict():
 
     config_dict = {"fingerprint": fingerprint_dict}
 
-    config = SecurityConfig()
+    config = SecurityConfig.from_dict(config_dict)
 
-    fingerprint = Fingerprint.from_dict(fingerprint_dict)
-    config.fingerprint = fingerprint
-
-    assert config.fingerprint is not None
-    assert isinstance(config.fingerprint, Fingerprint)
-    assert config.fingerprint.uuid_str == fingerprint_dict["uuid_str"]
-    assert config.fingerprint.metadata == fingerprint_dict["metadata"]
+    assert config.fingerprint.uuid_str == "b723c6ff-95de-5e87-860b-467b72282bd8"
+    assert config.fingerprint.metadata == {"version": "1.0"}
 
 
 def test_security_config_json_serialization():
@@ -85,10 +79,7 @@ def test_security_config_json_serialization():
 
     assert parsed_dict["fingerprint"]["metadata"] == {"version": "1.0"}
 
-    new_config = SecurityConfig()
+    new_config = SecurityConfig.from_dict(parsed_dict)
 
-    fingerprint_data = parsed_dict["fingerprint"]
-    new_fingerprint = Fingerprint.from_dict(fingerprint_data)
-    new_config.fingerprint = new_fingerprint
-
+    assert new_config.fingerprint.uuid_str == config.fingerprint.uuid_str
     assert new_config.fingerprint.metadata == {"version": "1.0"}

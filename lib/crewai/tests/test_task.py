@@ -479,6 +479,7 @@ def test_no_inject_date():
     )
     result = crew.kickoff()
     assert "2025-05-21" not in result.raw
+    assert result.raw == "The date today is October 10, 2023."
 
 
 @pytest.mark.vcr()
@@ -654,7 +655,7 @@ def test_save_task_output():
     with patch.object(Task, "_save_file") as save_file:
         save_file.return_value = None
         crew.kickoff()
-        save_file.assert_called_once()
+        save_file.assert_called_once_with("4")
 
 
 @pytest.mark.vcr()
@@ -760,8 +761,7 @@ def test_custom_converter_cls():
 
     # so the converter is bypassed. Verify the output is valid instead.
     result = crew.kickoff()
-    assert isinstance(result.pydantic, ScoreOutput)
-    assert isinstance(result.pydantic.score, int)
+    assert result.pydantic == ScoreOutput(score=4)
 
 
 @pytest.mark.vcr()
@@ -788,7 +788,7 @@ def test_increment_delegations_for_hierarchical_process():
     with patch.object(Task, "increment_delegations") as increment_delegations:
         increment_delegations.return_value = None
         crew.kickoff()
-        increment_delegations.assert_called_once()
+        increment_delegations.assert_called_once_with("Scorer")
 
 
 @pytest.mark.vcr()
@@ -822,7 +822,7 @@ def test_increment_delegations_for_sequential_process():
     with patch.object(Task, "increment_delegations") as increment_delegations:
         increment_delegations.return_value = None
         crew.kickoff()
-        increment_delegations.assert_called_once()
+        increment_delegations.assert_called_once_with("Scorer")
 
 
 @pytest.mark.vcr()
@@ -856,7 +856,7 @@ def test_increment_tool_errors():
     with patch.object(Task, "increment_tools_errors") as increment_tools_errors:
         increment_tools_errors.return_value = None
         crew.kickoff()
-        assert len(increment_tools_errors.mock_calls) > 0
+        increment_tools_errors.assert_called_once_with()
 
 
 def test_task_definition_based_on_dict():
@@ -892,7 +892,7 @@ def test_conditional_task_copy_preserves_type():
     }
     original_task = Task(**task_config)
     copied_task = original_task.copy(agents=[], task_mapping={})
-    assert isinstance(copied_task, Task)
+    assert type(copied_task) is Task
 
     original_conditional_config = {
         "description": "Give me an integer score between 1-5 for the following title: 'The impact of AI in the future of work'. Check examples to base your evaluation on.",
@@ -901,7 +901,7 @@ def test_conditional_task_copy_preserves_type():
     }
     original_conditional_task = ConditionalTask(**original_conditional_config)
     copied_conditional_task = original_conditional_task.copy(agents=[], task_mapping={})
-    assert isinstance(copied_conditional_task, ConditionalTask)
+    assert type(copied_conditional_task) is ConditionalTask
 
 
 def test_interpolate_inputs(tmp_path):
@@ -1180,8 +1180,7 @@ def test_create_directory_true():
 
     task._save_file("test content")
 
-    assert resolved_dir.exists()
-    assert resolved_path.exists()
+    assert resolved_path.read_text(encoding="utf-8") == "test content"
 
     if resolved_path.exists():
         resolved_path.unlink()
@@ -1249,7 +1248,7 @@ def test_create_directory_with_existing_directory():
     )
 
     task._save_file("test content")
-    assert resolved_path.exists()
+    assert resolved_path.read_text(encoding="utf-8") == "test content"
 
     if resolved_path.exists():
         resolved_path.unlink()

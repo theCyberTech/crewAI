@@ -220,7 +220,10 @@ class TestCrewKickoffCompaction:
         crew = Crew(agents=[agent], tasks=[task], verbose=False)
 
         result = crew.kickoff()
-        assert result is not None
+        assert result.raw.startswith(
+            "Python is a high-level, interpreted programming language known for "
+            "its readability and simplicity."
+        )
 
 
 class TestAgentExecuteTaskCompaction:
@@ -248,7 +251,10 @@ class TestAgentExecuteTaskCompaction:
         )
 
         result = agent.execute_task(task=task)
-        assert result is not None
+        assert result == (
+            "The sun is a massive ball of glowing gas at the center of our solar "
+            "system, providing light and warmth essential for life on Earth."
+        )
 
 
 class TestSummarizePreservesFiles:

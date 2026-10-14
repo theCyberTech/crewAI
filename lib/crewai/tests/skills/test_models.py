@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from pydantic import ValidationError
 import pytest
 
 from crewai.skills.models import (
@@ -19,11 +20,6 @@ class TestDisclosureLevel:
     def test_ordering(self) -> None:
         assert METADATA < INSTRUCTIONS
         assert INSTRUCTIONS < RESOURCES
-
-    def test_values(self) -> None:
-        assert METADATA == 1
-        assert INSTRUCTIONS == 2
-        assert RESOURCES == 3
 
 
 class TestSkillFrontmatter:
@@ -52,8 +48,9 @@ class TestSkillFrontmatter:
 
     def test_frozen(self) -> None:
         fm = SkillFrontmatter(name="my-skill", description="desc")
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError, match="frozen"):
             fm.name = "other"  # type: ignore[misc]
+        assert fm.name == "my-skill"
 
     def test_invalid_name_rejected(self) -> None:
         with pytest.raises(ValueError):

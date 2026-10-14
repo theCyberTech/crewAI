@@ -42,10 +42,9 @@ def test_knowledge_storage_uses_rag_client(
         score_threshold=0.3,
     )
 
-    assert isinstance(results, list)
-    assert len(results) == 1
-    assert isinstance(results[0], dict)
-    assert "content" in results[0]
+    assert results == [
+        {"content": "test content", "score": 0.9, "metadata": {"source": "test"}}
+    ]
 
 
 @patch("crewai.knowledge.storage.knowledge_storage.get_rag_client")
@@ -118,6 +117,13 @@ def test_search_error_handling(mock_get_client: MagicMock) -> None:
 
     results = storage.search(["test query"])
     assert results == []
+    mock_client.search.assert_called_once_with(
+        collection_name="knowledge_error_test",
+        query="test query",
+        limit=5,
+        metadata_filter=None,
+        score_threshold=0.6,
+    )
 
 
 @patch("crewai.knowledge.storage.knowledge_storage.get_rag_client")

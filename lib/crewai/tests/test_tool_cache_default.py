@@ -149,12 +149,12 @@ class TestToolCachingIsOptIn:
     def test_default_reexecutes_identical_tool_calls(self):
         """EPD-180: with no opt-in, both identical calls must really execute."""
         executions = run_crew()
-        assert len(executions) == 2
+        assert executions == ["paris", "paris"]
 
     def test_crew_cache_true_dedupes_identical_tool_calls(self):
         """Opting in via Crew(cache=True) restores the dedup behavior."""
         executions = run_crew(cache=True)
-        assert len(executions) == 1
+        assert executions == ["paris"]
 
 
 class TestAgentCacheWiring:
@@ -173,8 +173,8 @@ class TestAgentCacheWiring:
 
     def test_standalone_agent_explicit_cache_true_opts_in(self):
         agent = self._agent(cache=True)
-        assert agent.tools_handler.cache is not None
-        assert agent.cache_handler is not None
+        assert isinstance(agent.cache_handler, CacheHandler)
+        assert agent.tools_handler.cache is agent.cache_handler
 
     def test_standalone_agent_explicit_cache_handler_opts_in(self):
         handler = CacheHandler()
@@ -210,7 +210,8 @@ class TestAgentCacheWiring:
 
     def test_copy_of_opted_in_agent_stays_opted_in(self):
         copied = self._agent(cache=True).copy()
-        assert copied.tools_handler.cache is not None
+        assert isinstance(copied.cache_handler, CacheHandler)
+        assert copied.tools_handler.cache is copied.cache_handler
 
     def test_copy_of_handler_opted_in_agent_stays_opted_in(self):
         """An explicit cache_handler is an opt-in too; copy() excludes the
@@ -231,8 +232,9 @@ class TestAgentCacheWiring:
         agents must not become standalone cachers (Bugbot review finding
         on the original PR)."""
         agent = self._agent()
-        agent.set_cache_handler(CacheHandler())  # what Crew(cache=True) does
-        assert agent.tools_handler.cache is not None
+        handler = CacheHandler()
+        agent.set_cache_handler(handler)  # what Crew(cache=True) does
+        assert agent.tools_handler.cache is handler
 
         copied = agent.copy()
         assert copied.tools_handler.cache is None

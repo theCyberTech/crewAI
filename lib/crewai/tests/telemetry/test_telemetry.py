@@ -615,6 +615,7 @@ def test_every_span_records_the_crewai_version() -> None:
     shape, so "the method mentions crewai_version somewhere" is not enough.
     """
     shortfalls: list[str] = []
+    checked: set[str] = set()
     for cls in (Telemetry, CoreTelemetry):
         path = Path(inspect.getfile(cls))
         tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -626,6 +627,7 @@ def test_every_span_records_the_crewai_version() -> None:
             spans = _calls(node, "start_span")
             if not spans:
                 continue
+            checked.add(node.name)
             versions = _calls(node, "_add_attribute", "crewai_version")
             if versions < spans:
                 shortfalls.append(
@@ -633,6 +635,7 @@ def test_every_span_records_the_crewai_version() -> None:
                     f"({spans} span(s), {versions} version attribute(s))"
                 )
 
+    assert {"task_started", "crew_completed_span", "feature_usage_span"} <= checked
     assert not shortfalls, (
         "these methods open more spans than they record crewai_version on: "
         + ", ".join(sorted(shortfalls))

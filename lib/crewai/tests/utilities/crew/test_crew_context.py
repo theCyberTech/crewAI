@@ -7,13 +7,6 @@ from opentelemetry import baggage
 from opentelemetry.context import attach, detach
 
 
-def test_crew_context_creation():
-    crew_id = str(uuid.uuid4())
-    context = CrewContext(id=crew_id, key="test-crew")
-    assert context.id == crew_id
-    assert context.key == "test-crew"
-
-
 def test_get_crew_context_with_baggage():
     crew_id = str(uuid.uuid4())
     assert get_crew_context() is None
@@ -30,10 +23,6 @@ def test_get_crew_context_with_baggage():
     finally:
         detach(token)
 
-    assert get_crew_context() is None
-
-
-def test_get_crew_context_empty():
     assert get_crew_context() is None
 
 

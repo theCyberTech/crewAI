@@ -180,19 +180,6 @@ def test_gemini_specific_parameters():
     assert llm.location == "us-central1"
 
 
-def test_gemini_completion_call():
-    """
-    Test that GeminiCompletion call method works
-    """
-    llm = LLM(model="google/gemini-2.0-flash-001")
-
-    with patch.object(llm, 'call', return_value="Hello! I'm Gemini, ready to help.") as mock_call:
-        result = llm.call("Hello, how are you?")
-
-        assert result == "Hello! I'm Gemini, ready to help."
-        mock_call.assert_called_once_with("Hello, how are you?")
-
-
 def test_gemini_completion_called_during_crew_execution():
     """
     Test that GeminiCompletion.call is actually invoked when running a crew
@@ -336,14 +323,22 @@ def test_gemini_completion_with_tools():
         crew = Crew(agents=[agent], tasks=[task])
         crew.kickoff()
 
-        assert mock_call.called
-
-        call_args = mock_call.call_args
-        call_kwargs = call_args[1] if len(call_args) > 1 else {}
-
-        if 'tools' in call_kwargs:
-            assert call_kwargs['tools'] is not None
-            assert len(call_kwargs['tools']) > 0
+        assert mock_call.call_args.kwargs["tools"] == [
+            {
+                "type": "function",
+                "function": {
+                    "name": "sample_tool",
+                    "description": "A sample tool for testing",
+                    "parameters": {
+                        "properties": {"query": {"title": "Query", "type": "string"}},
+                        "required": ["query"],
+                        "type": "object",
+                        "additionalProperties": False,
+                    },
+                    "strict": True,
+                },
+            }
+        ]
 
 
 def test_gemini_raises_error_when_model_not_supported():
@@ -447,10 +442,10 @@ def test_gemini_generation_config():
 
     config = llm._prepare_generation_config()
 
-    assert hasattr(config, 'temperature') or 'temperature' in str(config)
-    assert hasattr(config, 'top_p') or 'top_p' in str(config)
-    assert hasattr(config, 'top_k') or 'top_k' in str(config)
-    assert hasattr(config, 'max_output_tokens') or 'max_output_tokens' in str(config)
+    assert config.temperature == 0.7
+    assert config.top_p == 0.9
+    assert config.top_k == 40
+    assert config.max_output_tokens == 1000
 
 
 def test_gemini_model_detection():
@@ -488,7 +483,7 @@ def test_gemini_context_window_size():
     # Test Gemini 2.5 Flash
     llm_2_5 = LLM(model="google/gemini-2.5-flash")
     context_size_2_5 = llm_2_5.get_context_window_size()
-    assert context_size_2_5 > 500000
+    assert context_size_2_5 == 891289
 
     # Test Gemini 3.8 Flash
     llm_3_8 = LLM(model="google/gemini-3.8-flash")
@@ -498,7 +493,7 @@ def test_gemini_context_window_size():
     # Test Gemini 2.5 Pro
     llm_2_5_pro = LLM(model="google/gemini-2.5-pro")
     context_size_2_5_pro = llm_2_5_pro.get_context_window_size()
-    assert context_size_2_5_pro > 500000
+    assert context_size_2_5_pro == 891289
 
 
 def test_gemini_message_formatting():
@@ -519,11 +514,14 @@ def test_gemini_message_formatting():
     # System message should be extracted
     assert system_instruction == "You are a helpful assistant."
 
-    # Remaining messages should be Content objects
-    assert len(formatted_contents) >= 3
-
-    assert formatted_contents[0].role == "user"
-    assert formatted_contents[1].role == "model"
+    assert [
+        (content.role, [part.text for part in content.parts])
+        for content in formatted_contents
+    ] == [
+        ("user", ["Hello"]),
+        ("model", ["Hi there!"]),
+        ("user", ["How are you?"]),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -720,9 +718,9 @@ def test_gemini_token_usage_tracking():
 
     usage = llm.get_token_usage_summary()
     assert usage.successful_requests == 1
-    assert usage.prompt_tokens > 0
-    assert usage.completion_tokens > 0
-    assert usage.total_tokens > 0
+    assert usage.prompt_tokens == 1
+    assert usage.completion_tokens == 11
+    assert usage.total_tokens == 12
 
 
 def test_gemini_thoughts_tokens_counted_in_completion_and_total():
@@ -838,12 +836,8 @@ def test_gemini_stop_sequences_sent_to_api():
 
         llm.call("Say hello in one word")
 
-        call_kwargs = mock_generate.call_args[1]
-        assert "config" in call_kwargs
-        config = call_kwargs["config"]
-        assert hasattr(config, 'stop_sequences') or 'stop_sequences' in config.__dict__
-        if hasattr(config, 'stop_sequences'):
-            assert config.stop_sequences == ["\nObservation:", "\nThought:"]
+        config = mock_generate.call_args.kwargs["config"]
+        assert config.stop_sequences == ["\nObservation:", "\nThought:"]
 
 
 @pytest.mark.vcr()
@@ -991,18 +985,7 @@ def test_gemini_2_0_response_model_with_property_ordering():
 
     config = llm._prepare_generation_config(response_model=TestResponse)
 
-    assert hasattr(config, 'response_json_schema') or 'response_json_schema' in config.__dict__
-
-    if hasattr(config, 'response_json_schema'):
-        schema = config.response_json_schema
-    else:
-        schema = config.__dict__.get('response_json_schema', {})
-
-    # Verify propertyOrdering is present for Gemini 2.0
-    assert "propertyOrdering" in schema
-    assert "name" in schema["propertyOrdering"]
-    assert "age" in schema["propertyOrdering"]
-    assert "email" in schema["propertyOrdering"]
+    assert config.response_json_schema["propertyOrdering"] == ["name", "age", "email"]
 
 
 def test_gemini_1_5_response_model_uses_response_schema():
@@ -1018,16 +1001,9 @@ def test_gemini_1_5_response_model_uses_response_schema():
 
     config = llm._prepare_generation_config(response_model=TestResponse)
 
-    assert hasattr(config, 'response_schema') or 'response_schema' in config.__dict__
-    assert not (hasattr(config, 'response_json_schema') and config.response_json_schema is not None)
-
-    if hasattr(config, 'response_schema'):
-        schema = config.response_schema
-    else:
-        schema = config.__dict__.get('response_schema')
-
+    assert config.response_json_schema is None
     # For Gemini 1.5, response_schema should be the Pydantic model itself
-    assert schema is TestResponse or isinstance(schema, type)
+    assert config.response_schema is TestResponse
 
 
 # Agent Kickoff Structured Output Tests
@@ -1062,11 +1038,21 @@ def test_gemini_agent_kickoff_structured_output_without_tools():
         response_format=AnalysisResult,
     )
 
-    assert result.pydantic is not None, "Expected pydantic output but got None"
-    assert isinstance(result.pydantic, AnalysisResult), f"Expected AnalysisResult but got {type(result.pydantic)}"
-    assert result.pydantic.topic, "Topic should not be empty"
-    assert len(result.pydantic.key_points) > 0, "Should have at least one key point"
-    assert result.pydantic.summary, "Summary should not be empty"
+    assert result.pydantic == AnalysisResult(
+        topic="Benefits of Remote Work",
+        key_points=[
+            "Increased employee flexibility and work-life balance",
+            "Reduced operational costs for businesses (e.g., office space)",
+            "Access to a broader global talent pool",
+            "Potential for increased productivity due to fewer distractions and commute stress",
+        ],
+        summary=(
+            "Remote work offers significant advantages for both employees and "
+            "employers, enhancing flexibility, reducing costs, and expanding talent "
+            "opportunities while potentially boosting overall productivity and "
+            "employee well-being."
+        ),
+    )
 
 
 @pytest.mark.vcr()
@@ -1204,10 +1190,7 @@ def test_gemini_stop_words_still_applied_to_regular_responses():
 
     result = llm._apply_stop_words(response_with_stop_word)
 
-    # Response should be truncated at the stop word
-    assert "Observation:" not in result
-    assert "Found results" not in result
-    assert "I need to search for more information" in result
+    assert result == "I need to search for more information.\n\nAction: search"
 
 
 def test_gemini_structured_output_preserves_json_with_stop_word_patterns():
@@ -1372,5 +1355,12 @@ def test_gemini_no_thinking_tokens_defaults_to_zero():
     mock_response.candidates = []
 
     usage = llm._extract_token_usage(mock_response)
-    assert usage["reasoning_tokens"] == 0
-    assert usage["cached_prompt_tokens"] == 0
+    assert usage == {
+        "prompt_token_count": 80,
+        "candidates_token_count": 40,
+        "completion_tokens": 40,
+        "total_token_count": 120,
+        "total_tokens": 120,
+        "cached_prompt_tokens": 0,
+        "reasoning_tokens": 0,
+    }

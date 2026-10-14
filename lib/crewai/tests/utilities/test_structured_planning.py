@@ -386,9 +386,11 @@ class TestOpenAIStructuredPlanning:
 
         result = agent.kickoff(RESEARCH_TASK)
 
-        assert result is not None
-        assert result.raw is not None
-        assert len(str(result.raw)) > 50
+        assert result.raw.startswith(
+            "Step 1 (Search for recent information about AI agents and their "
+            "market trends.):\n"
+        )
+        assert "currently valued at $50 billion" in result.raw
 
 
 class TestAnthropicStructuredPlanning:
@@ -421,9 +423,11 @@ class TestAnthropicStructuredPlanning:
 
         result = agent.kickoff(RESEARCH_TASK)
 
-        assert result is not None
-        assert result.raw is not None
-        assert len(str(result.raw)) > 50
+        assert result.raw.startswith(
+            "Step 2 (Read detailed content from the most relevant and "
+            "authoritative industry source found in the search results):\n"
+        )
+        assert "approximately $50 billion in 2024" in result.raw
 
 
 class TestGeminiStructuredPlanning:
@@ -456,9 +460,10 @@ class TestGeminiStructuredPlanning:
 
         result = agent.kickoff(RESEARCH_TASK)
 
-        assert result is not None
-        assert result.raw is not None
-        assert len(str(result.raw)) > 50
+        assert result.raw.startswith(
+            "Step 1 (Search for recent information on AI agent market trends.):\n"
+        )
+        assert "currently valued at $50 billion" in result.raw
 
 
 class TestAzureStructuredPlanning:
@@ -494,79 +499,11 @@ class TestAzureStructuredPlanning:
 
         result = agent.kickoff(RESEARCH_TASK)
 
-        assert result is not None
-        assert result.raw is not None
-        assert len(str(result.raw)) > 50
-
-
-# Unit Tests with Mocked LLM Providers
-
-
-class TestStructuredPlanningWithMockedProviders:
-    """Unit tests with mocked LLM providers for faster execution."""
-
-    def _create_mock_plan_response(self, steps_data):
-        """Helper to create mock plan response."""
-        return json.dumps({
-            "plan": "Test plan",
-            "steps": steps_data,
-            "ready": True,
-        })
-
-    def test_openai_mock_structured_response(self):
-        """Test parsing OpenAI structured response."""
-        steps_data = [
-            {"step_number": 1, "description": "Search", "tool_to_use": "search", "depends_on": []},
-            {"step_number": 2, "description": "Analyze", "tool_to_use": None, "depends_on": [1]},
-        ]
-
-        response = self._create_mock_plan_response(steps_data)
-        parsed = json.loads(response)
-
-        assert len(parsed["steps"]) == 2
-        assert parsed["steps"][0]["tool_to_use"] == "search"
-        assert parsed["steps"][1]["depends_on"] == [1]
-
-    def test_anthropic_mock_structured_response(self):
-        """Test parsing Anthropic structured response (same format)."""
-        steps_data = [
-            {"step_number": 1, "description": "Research", "tool_to_use": "web_search", "depends_on": []},
-            {"step_number": 2, "description": "Summarize", "tool_to_use": None, "depends_on": [1]},
-            {"step_number": 3, "description": "Report", "tool_to_use": "write_file", "depends_on": [1, 2]},
-        ]
-
-        response = self._create_mock_plan_response(steps_data)
-        parsed = json.loads(response)
-
-        assert len(parsed["steps"]) == 3
-        assert parsed["steps"][2]["depends_on"] == [1, 2]
-
-    def test_gemini_mock_structured_response(self):
-        """Test parsing Gemini structured response (same format)."""
-        steps_data = [
-            {"step_number": 1, "description": "Gather data", "tool_to_use": "data_tool", "depends_on": []},
-            {"step_number": 2, "description": "Process", "tool_to_use": None, "depends_on": [1]},
-        ]
-
-        response = self._create_mock_plan_response(steps_data)
-        parsed = json.loads(response)
-
-        assert len(parsed["steps"]) == 2
-        assert parsed["ready"] is True
-
-    def test_azure_mock_structured_response(self):
-        """Test parsing Azure OpenAI structured response (same format as OpenAI)."""
-        steps_data = [
-            {"step_number": 1, "description": "Initialize", "tool_to_use": None, "depends_on": []},
-            {"step_number": 2, "description": "Execute", "tool_to_use": "executor", "depends_on": [1]},
-            {"step_number": 3, "description": "Finalize", "tool_to_use": None, "depends_on": [1, 2]},
-        ]
-
-        response = self._create_mock_plan_response(steps_data)
-        parsed = json.loads(response)
-
-        assert len(parsed["steps"]) == 3
-        assert parsed["steps"][0]["tool_to_use"] is None
+        assert result.raw.startswith(
+            "Step 1 (Search for recent information about AI agents and their "
+            "market trends using web_search.):\n"
+        )
+        assert "$50 billion valuation in 2023" in result.raw
 
 
 class TestTodoListIntegration:

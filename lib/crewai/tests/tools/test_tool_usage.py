@@ -893,13 +893,14 @@ def test_tool_error_does_not_emit_finished_event():
             finished_events.append(event)
 
     tool_calling = ToolCalling(tool_name="failing_tool", arguments={})
-    tool_usage.use(calling=tool_calling, tool_string="Action: failing_tool")
+    result = tool_usage.use(calling=tool_calling, tool_string="Action: failing_tool")
 
     assert error_received.wait(timeout=5), "Timeout waiting for error event"
     crewai_event_bus.flush()
 
-    assert len(started_events) >= 1, "Expected at least one ToolUsageStartedEvent"
-    assert len(error_events) >= 1, "Expected at least one ToolUsageErrorEvent"
-    assert len(finished_events) == 0, (
+    assert "This was the error: Intentional failure." in result
+    assert len(started_events) == 3
+    assert [str(event.error) for event in error_events] == ["Intentional failure"] * 3
+    assert finished_events == [], (
         "ToolUsageFinishedEvent should NOT be emitted after ToolUsageErrorEvent"
     )

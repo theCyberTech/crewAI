@@ -65,19 +65,15 @@ class TestOpenAIInterceptorIntegration:
             messages=[{"role": "user", "content": "Say 'Hello World' and nothing else"}]
         )
 
-        for request in interceptor.outbound_calls:
-            assert "X-OpenAI-Interceptor" in request.headers
-            assert request.headers["X-OpenAI-Interceptor"] == "openai-test-value"
-            assert "X-Request-ID" in request.headers
-            assert request.headers["X-Request-ID"] == "test-request-123"
+        assert len(interceptor.outbound_calls) == 1
+        request = interceptor.outbound_calls[0]
+        assert request.headers["X-OpenAI-Interceptor"] == "openai-test-value"
+        assert request.headers["X-Request-ID"] == "test-request-123"
 
-        for response in interceptor.inbound_calls:
-            assert "X-Response-Tracked" in response.headers
-            assert response.headers["X-Response-Tracked"] == "true"
+        assert len(interceptor.inbound_calls) == 1
+        assert interceptor.inbound_calls[0].headers["X-Response-Tracked"] == "true"
 
-        assert result is not None
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == "Hello World"
 
     def test_openai_without_interceptor_works(self) -> None:
         """Test that OpenAI LLM works without interceptor."""

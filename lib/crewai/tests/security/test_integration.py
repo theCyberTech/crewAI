@@ -1,7 +1,9 @@
 """Test integration of fingerprinting with Agent, Crew, and Task classes."""
 
+import uuid
+
 from crewai import Agent, Crew, Task
-from crewai.security import Fingerprint, SecurityConfig
+from crewai.security import SecurityConfig
 
 
 def test_agent_with_security_config():
@@ -27,9 +29,8 @@ def test_agent_fingerprint_property():
         role="Tester", goal="Test fingerprinting", backstory="Testing fingerprinting"
     )
 
-    assert agent.fingerprint is not None
-    assert isinstance(agent.fingerprint, Fingerprint)
-    assert agent.security_config is not None
+    assert agent.fingerprint is agent.security_config.fingerprint
+    assert uuid.UUID(agent.fingerprint.uuid_str).version == 4
 
 
 def test_crew_with_security_config():
@@ -64,9 +65,8 @@ def test_crew_fingerprint_property():
 
     crew = Crew(agents=[agent1, agent2])
 
-    assert crew.fingerprint is not None
-    assert isinstance(crew.fingerprint, Fingerprint)
-    assert crew.security_config is not None
+    assert crew.fingerprint is crew.security_config.fingerprint
+    assert uuid.UUID(crew.fingerprint.uuid_str).version == 4
 
 
 def test_task_with_security_config():
@@ -98,9 +98,8 @@ def test_task_fingerprint_property():
 
     task = Task(description="Test task", expected_output="Testing output", agent=agent)
 
-    assert task.fingerprint is not None
-    assert isinstance(task.fingerprint, Fingerprint)
-    assert task.security_config is not None
+    assert task.fingerprint is task.security_config.fingerprint
+    assert uuid.UUID(task.fingerprint.uuid_str).version == 4
 
 
 def test_end_to_end_fingerprinting():

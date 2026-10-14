@@ -1,5 +1,7 @@
 """Tests for event ordering and parent-child relationships."""
 
+import uuid
+
 import pytest
 
 from crewai.agent import Agent
@@ -135,12 +137,13 @@ class TestCrewEventOrdering:
         completed = collector.first(CrewKickoffCompletedEvent)
 
         assert started is not None
-        assert started.event_id is not None
-        assert len(started.event_id) > 0
+        assert str(uuid.UUID(started.event_id)) == started.event_id
 
         assert completed is not None
-        assert completed.event_id is not None
+        assert str(uuid.UUID(completed.event_id)) == completed.event_id
         assert completed.event_id != started.event_id
+        assert completed.started_event_id == started.event_id
+        assert completed.output.raw == "hello"
 
     @pytest.mark.vcr()
     def test_crew_completed_after_started(self, collector: EventCollector) -> None:
@@ -218,11 +221,12 @@ class TestAgentEventOrdering:
         started = collector.first(AgentExecutionStartedEvent)
         completed = collector.first(AgentExecutionCompletedEvent)
 
-        if started:
-            assert started.event_id is not None
-
-        if completed:
-            assert completed.event_id is not None
+        assert started is not None
+        assert completed is not None
+        assert str(uuid.UUID(started.event_id)) == started.event_id
+        assert completed.event_id != started.event_id
+        assert completed.started_event_id == started.event_id
+        assert completed.output == "done"
 
     @pytest.mark.vcr()
     def test_llm_events_have_parent(self, collector: EventCollector) -> None:
@@ -242,11 +246,15 @@ class TestAgentEventOrdering:
         crewai_event_bus.flush()
 
         llm_started = collector.first(LLMCallStartedEvent)
+        assert llm_started is not None
 
-        if llm_started:
-            assert llm_started.event_id is not None
-            # LLM events should have some parent in the hierarchy
-            assert llm_started.parent_event_id is not None
+        events_by_id = {e.event_id: e for e in collector.events}
+        ancestors = []
+        parent_id = llm_started.parent_event_id
+        while parent_id in events_by_id:
+            ancestors.append(events_by_id[parent_id].type)
+            parent_id = events_by_id[parent_id].parent_event_id
+        assert ancestors == ["flow_started", "agent_execution_started"]
 
 
 class TestFlowWithCrewEventOrdering:
@@ -278,14 +286,17 @@ class TestFlowWithCrewEventOrdering:
         await flow.akickoff()
         crewai_event_bus.flush()
 
-        flow_started = collector.first(FlowStartedEvent)
-        flow_finished = collector.first(FlowFinishedEvent)
+        flow_started = next(
+            e for e in collector.all_of(FlowStartedEvent) if e.flow_name == "SimpleFlow"
+        )
+        flow_finished = next(
+            e for e in collector.all_of(FlowFinishedEvent) if e.flow_name == "SimpleFlow"
+        )
 
-        assert flow_started is not None
-        assert flow_started.event_id is not None
-
-        assert flow_finished is not None
-        assert flow_finished.event_id is not None
+        assert str(uuid.UUID(flow_started.event_id)) == flow_started.event_id
+        assert flow_finished.event_id != flow_started.event_id
+        assert flow_finished.started_event_id == flow_started.event_id
+        assert flow_finished.result.raw == "complete"
 
     @pytest.mark.asyncio
     @pytest.mark.vcr()
@@ -402,9 +413,14 @@ class TestFlowWithMultipleCrewsEventOrdering:
         crewai_event_bus.flush()
 
         crew_started_events = collector.all_of(CrewKickoffStartedEvent)
+        crew_completed_events = collector.all_of(CrewKickoffCompletedEvent)
 
-        assert len(crew_started_events) >= 2
+        assert len(crew_started_events) == 2
         assert crew_started_events[0].event_id != crew_started_events[1].event_id
+        assert [e.started_event_id for e in crew_completed_events] == [
+            e.event_id for e in crew_started_events
+        ]
+        assert [e.output.raw for e in crew_completed_events] == ["1", "2"]
 
     @pytest.mark.asyncio
     @pytest.mark.vcr()
@@ -1226,10 +1242,19 @@ class TestTriggeredByEventId:
 
         # Even with exception, events should have proper previous_event_id chain
         all_sorted = sorted(events, key=lambda e: e.emission_sequence or 0)
-        for event in all_sorted[1:]:
-            assert event.previous_event_id is not None, (
-                f"Event {event.type} (seq {event.emission_sequence}) should have previous_event_id"
+        assert [e.type for e in all_sorted] == [
+            "flow_started",
+            "method_execution_started",
+            "method_execution_failed",
+        ]
+        for prev, event in zip(all_sorted, all_sorted[1:]):
+            assert event.previous_event_id == prev.event_id, (
+                f"Event {event.type} (seq {event.emission_sequence}) should point back to {prev.type}"
             )
+        failed = all_sorted[-1]
+        assert failed.method_name == "will_fail"
+        assert str(failed.error) == "intentional error"
+        assert failed.triggered_by_event_id is None
 
     @pytest.mark.asyncio
     async def test_sync_method_in_flow_triggered_by(self) -> None:

@@ -78,7 +78,7 @@ def test_crew_execution_span_assigned_on_kickoff():
 
     crew.kickoff()
 
-    assert crew._execution_span is not None, (
+    assert crew._execution_span.name == "Crew Execution", (
         "crew._execution_span should be set after kickoff when share_crew=True. "
         "The event_listener.py must assign the return value of crew_execution_span() "
         "to source._execution_span."
@@ -110,9 +110,11 @@ def test_end_crew_receives_valid_execution_span():
     )
 
     result = crew.kickoff()
+    assert crewai_event_bus.flush()
 
-    assert crew._execution_span is not None
-    assert result is not None
+    assert result.raw == "Hello!"
+    assert crew._execution_span.attributes["crew_output"] == "Hello!"
+    assert crew._execution_span.end_time >= crew._execution_span.start_time
 
 
 @pytest.mark.vcr()
@@ -173,7 +175,7 @@ async def test_crew_execution_span_assigned_on_kickoff_async():
 
     await crew.kickoff_async()
 
-    assert crew._execution_span is not None, (
+    assert crew._execution_span.name == "Crew Execution", (
         "crew._execution_span should be set after kickoff_async when share_crew=True"
     )
 

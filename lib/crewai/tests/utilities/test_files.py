@@ -246,7 +246,7 @@ class TestTypedFileWrappers:
         tf = TextFile(source=b"content")
         result = {**tf}
 
-        assert "file" in result
+        assert result == {"file": tf}
 
     def test_keys_method(self, tmp_path: Path) -> None:
         """Test keys() method for dict unpacking."""
@@ -325,8 +325,10 @@ class TestNormalizeInputFiles:
 
         result = normalize_input_files([str(file1), str(file2)])
 
-        assert "doc1.txt" in result
-        assert "doc2.txt" in result
+        assert {name: f.read() for name, f in result.items()} == {
+            "doc1.txt": b"content1",
+            "doc2.txt": b"content2",
+        }
 
     def test_normalize_path_objects(self, tmp_path: Path) -> None:
         """Test normalizing Path objects."""
@@ -341,8 +343,10 @@ class TestNormalizeInputFiles:
         """Test normalizing raw bytes."""
         result = normalize_input_files([b"content1", b"content2"])
 
-        assert "file_0" in result
-        assert "file_1" in result
+        assert {name: f.read() for name, f in result.items()} == {
+            "file_0": b"content1",
+            "file_1": b"content2",
+        }
 
     def test_normalize_file_source(self) -> None:
         """Test normalizing FileSource objects."""
@@ -365,10 +369,11 @@ class TestNormalizeInputFiles:
 
         result = normalize_input_files(inputs)
 
-        assert len(result) == 3
-        assert "path.txt" in result
-        assert "file_1" in result
-        assert "source.txt" in result
+        assert {name: f.read() for name, f in result.items()} == {
+            "path.txt": b"from path",
+            "file_1": b"raw bytes",
+            "source.txt": b"source",
+        }
 
     def test_empty_input(self) -> None:
         """Test normalizing empty input list."""

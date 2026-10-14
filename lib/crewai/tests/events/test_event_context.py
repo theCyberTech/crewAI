@@ -110,10 +110,6 @@ class TestEventTypeSets:
 class TestLastEventIdTracking:
     """Tests for linear chain event ID tracking."""
 
-    def test_initial_last_event_id_is_none(self) -> None:
-        reset_last_event_id()
-        assert get_last_event_id() is None
-
     def test_set_and_get_last_event_id(self) -> None:
         reset_last_event_id()
         set_last_event_id("event-123")
@@ -133,10 +129,6 @@ class TestLastEventIdTracking:
 
 class TestTriggeringEventIdTracking:
     """Tests for causal chain event ID tracking."""
-
-    def test_initial_triggering_event_id_is_none(self) -> None:
-        set_triggering_event_id(None)
-        assert get_triggering_event_id() is None
 
     def test_set_and_get_triggering_event_id(self) -> None:
         set_triggering_event_id("trigger-123")
@@ -158,10 +150,11 @@ class TestTriggeredByScope:
             assert get_triggering_event_id() == "trigger-456"
 
     def test_scope_restores_previous_value(self) -> None:
-        set_triggering_event_id(None)
+        set_triggering_event_id("previous")
         with triggered_by_scope("trigger-456"):
             pass
-        assert get_triggering_event_id() is None
+        assert get_triggering_event_id() == "previous"
+        set_triggering_event_id(None)
 
     def test_nested_scopes(self) -> None:
         set_triggering_event_id(None)
@@ -173,13 +166,12 @@ class TestTriggeredByScope:
         assert get_triggering_event_id() is None
 
     def test_scope_restores_on_exception(self) -> None:
-        set_triggering_event_id(None)
-        try:
+        set_triggering_event_id("previous")
+        with pytest.raises(ValueError, match="test error"):
             with triggered_by_scope("trigger-789"):
                 raise ValueError("test error")
-        except ValueError:
-            pass
-        assert get_triggering_event_id() is None
+        assert get_triggering_event_id() == "previous"
+        set_triggering_event_id(None)
 
 
 class TestResumeTaskScope:

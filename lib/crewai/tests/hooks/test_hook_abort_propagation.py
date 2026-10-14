@@ -19,6 +19,7 @@ network or a cassette.
 from __future__ import annotations
 
 from typing import Any
+from unittest.mock import patch
 
 from crewai.agent import Agent
 from crewai.agent.planning_config import PlanningConfig
@@ -63,6 +64,7 @@ from crewai.tasks.llm_guardrail import LLMGuardrail
 from crewai.tasks.task_output import TaskOutput
 from crewai.utilities.converter import Converter
 from crewai.utilities.guardrail import process_guardrail
+from crewai.utilities.logger import Logger
 from crewai.utilities.planning_types import TodoItem
 import pytest
 from pydantic import BaseModel
@@ -367,7 +369,12 @@ def test_an_ordinary_memory_save_failure_still_degrades():
     agent = Agent(role="Doer", goal="Do", backstory="You do.")
     agent.memory = _DenyingMemory(ValueError("vector store is down"))
 
-    agent._save_kickoff_to_memory("the input", "the output")
+    with patch.object(Logger, "log") as log:
+        agent._save_kickoff_to_memory("the input", "the output")
+
+    log.assert_called_once_with(
+        "error", "Failed to save kickoff result to memory: vector store is down"
+    )
 
 
 def test_a_denied_guardrail_does_not_read_as_a_failed_validation(denying_llm):

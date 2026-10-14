@@ -160,6 +160,7 @@ class TestPlatformIntegrationToken:
 
         assert get_platform_integration_token() is None
 
+    @patch.dict(os.environ, {"CREWAI_PLATFORM_INTEGRATION_TOKEN": "env-token"})
     def test_empty_string_token(self):
         empty_token = ""
 

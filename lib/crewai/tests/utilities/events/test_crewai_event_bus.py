@@ -1,5 +1,5 @@
 import threading
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from crewai.events.base_events import BaseEvent
 from crewai.events.event_bus import crewai_event_bus
@@ -78,12 +78,22 @@ def test_event_bus_error_handling():
         called.set()
         raise ValueError("Simulated handler failure")
 
+    received = []
+
     @crewai_event_bus.on(TestEvent)
     def working_handler(source, event):
+        received.append((source, event))
         error_caught.set()
 
     event = TestEvent(type="test_event")
-    crewai_event_bus.emit("source_object", event)
+    with patch.object(crewai_event_bus, "_console") as mock_console:
+        crewai_event_bus.emit("source_object", event)
 
-    assert called.wait(timeout=2), "Broken handler was never called"
-    assert error_caught.wait(timeout=2), "Working handler was never called after error"
+        assert called.wait(timeout=2), "Broken handler was never called"
+        assert error_caught.wait(timeout=2), "Working handler was never called after error"
+        crewai_event_bus.flush()
+
+    assert received == [("source_object", event)]
+    mock_console.print.assert_any_call(
+        "[CrewAIEventsBus] Sync handler error in broken_handler: Simulated handler failure"
+    )

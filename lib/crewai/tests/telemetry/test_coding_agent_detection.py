@@ -192,7 +192,7 @@ def test_precedence_matches_get_env_context(clean_env):
         "GOOSE_PROVIDER",
     ],
 )
-def test_config_style_variables_are_not_used_as_markers(config_var):
+def test_config_style_variables_are_not_used_as_markers(clean_env, config_var):
     """Persistent user config must never be treated as a session marker.
 
     crewai loads dotenv files on normal runs, so a committed AIDER_MODEL or
@@ -200,16 +200,17 @@ def test_config_style_variables_are_not_used_as_markers(config_var):
     detection matrices list several of these; they are deliberately excluded
     here rather than copied wholesale.
     """
-    all_vars = {var for _, env_vars in CODING_AGENT_ENV_MARKERS for var in env_vars}
+    clean_env.setenv(config_var, "1")
 
-    assert config_var not in all_vars
+    assert detect_coding_agent() == "unknown"
 
 
-def test_hosted_environments_are_not_reported_as_assistants():
+def test_hosted_environments_are_not_reported_as_assistants(clean_env):
     """REPL_ID marks a hosted environment, not an assistant driving the run."""
-    all_vars = {var for _, env_vars in CODING_AGENT_ENV_MARKERS for var in env_vars}
+    clean_env.setenv("REPL_ID", "repl-1")
 
-    assert "REPL_ID" not in all_vars
+    assert detect_coding_agent() == "unknown"
+    assert detect_runtime_context() == "hosted_ide"
 
 
 def test_every_marker_comes_from_a_verified_set():
@@ -277,12 +278,14 @@ def test_terminal_bound_assistants_outrank_cursor(clean_env):
         clean_env.delenv(marker)
 
 
-def test_editor_terminal_requires_exact_value(clean_env):
+def test_editor_terminal_requires_exact_value(clean_env, monkeypatch):
+    monkeypatch.setattr("os.path.exists", lambda path: False)
+    monkeypatch.setattr("sys.stdout", type("S", (), {"isatty": lambda self: True})())
     clean_env.setenv("TERM_PROGRAM", "vscode")
     assert detect_runtime_context() == "vscode_terminal"
 
     clean_env.setenv("TERM_PROGRAM", "iTerm.app")
-    assert detect_runtime_context() != "vscode_terminal"
+    assert detect_runtime_context() == "interactive"
 
 
 def test_editor_terminal_is_not_reported_as_an_assistant(clean_env):
@@ -293,7 +296,7 @@ def test_editor_terminal_is_not_reported_as_an_assistant(clean_env):
 
 def test_empty_marker_value_is_ignored(clean_env):
     clean_env.setenv("CLAUDECODE", "")
-    assert detect_coding_agent() != "claude_code"
+    assert detect_coding_agent() == "unknown"
 
 
 @pytest.mark.parametrize(("env_var", "expected"), EVERY_RUNTIME_CASE)
@@ -359,7 +362,7 @@ def test_never_returns_env_var_value(clean_env):
     """The detected name must never leak the environment variable's contents."""
     secret = "sk-super-secret-token"
     clean_env.setenv("CURSOR_TRACE_ID", secret)
-    assert secret not in detect_coding_agent()
+    assert detect_coding_agent() == "cursor"
 
 
 def test_handles_broken_stdout(clean_env, monkeypatch):
@@ -440,12 +443,18 @@ def test_common_attributes_processor_never_breaks_span_creation(clean_env, otel_
     from crewai_core.telemetry import CommonAttributesSpanProcessor
 
     class ExplodingSpan:
-        def set_attributes(self, _):
+        received = None
+
+        def set_attributes(self, attributes):
+            self.received = attributes
             raise RuntimeError("boom")
 
+    span = ExplodingSpan()
     CommonAttributesSpanProcessor({"coding_agent": "cursor"}).on_start(
-        ExplodingSpan()  # type: ignore[arg-type]
+        span  # type: ignore[arg-type]
     )
+
+    assert span.received == {"coding_agent": "cursor"}
 
 
 def test_coding_agent_span_emits_once(isolated_telemetry, clean_env, monkeypatch):

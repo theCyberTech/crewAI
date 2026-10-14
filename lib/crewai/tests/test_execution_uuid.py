@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
 from crewai.execution import (
@@ -23,10 +25,11 @@ def _isolate_execution_uuid() -> None:
 
 def test_begin_creates_when_empty() -> None:
     assert get_execution_uuid() is None
-    first_token = begin_execution()
+    with patch("crewai.execution.uuid4", return_value="minted-uuid"):
+        first_token = begin_execution()
     first = get_execution_uuid()
     second_token = begin_execution()
-    assert first
+    assert first == "minted-uuid"
     assert get_execution_uuid() == first
     assert second_token is None
     end_execution(second_token)
@@ -64,14 +67,15 @@ def test_nested_execution_inherits_and_only_owner_clears() -> None:
 
 
 def test_two_sequential_outer_runs_get_distinct_uuids() -> None:
-    first_token = begin_execution()
-    first_id = get_execution_uuid()
-    end_execution(first_token)
-    second_token = begin_execution()
-    second_id = get_execution_uuid()
-    end_execution(second_token)
+    with patch("crewai.execution.uuid4", side_effect=["run-1", "run-2"]):
+        first_token = begin_execution()
+        first_id = get_execution_uuid()
+        end_execution(first_token)
+        second_token = begin_execution()
+        second_id = get_execution_uuid()
+        end_execution(second_token)
 
-    assert first_id != second_id
+    assert (first_id, second_id) == ("run-1", "run-2")
 
 
 def test_flow_kickoff_creates_and_clears_execution_uuid() -> None:
@@ -87,8 +91,9 @@ def test_flow_kickoff_creates_and_clears_execution_uuid() -> None:
 
     flow = ProbeFlow()
     assert get_execution_uuid() is None
-    flow.kickoff()
-    assert seen["during"]
+    with patch("crewai.execution.uuid4", return_value="flow-run-uuid"):
+        flow.kickoff()
+    assert seen["during"] == "flow-run-uuid"
     assert get_execution_uuid() is None
 
 
@@ -117,8 +122,6 @@ def test_flow_kickoff_inherits_enterprise_execution_uuid() -> None:
 
 @pytest.mark.asyncio
 async def test_crew_akickoff_creates_and_clears_execution_uuid() -> None:
-    from unittest.mock import patch
-
     from crewai import Agent, Crew, Task
     from crewai.tasks.task_output import TaskOutput
 
@@ -131,18 +134,19 @@ async def test_crew_akickoff_creates_and_clears_execution_uuid() -> None:
         seen["during"] = get_execution_uuid()
         return TaskOutput(description="d", raw="ok", agent="r")
 
-    with patch("crewai.task.Task.aexecute_sync", side_effect=capture):
+    with (
+        patch("crewai.task.Task.aexecute_sync", side_effect=capture),
+        patch("crewai.execution.uuid4", return_value="crew-run-uuid"),
+    ):
         assert get_execution_uuid() is None
         await crew.akickoff()
 
-    assert seen["during"]
+    assert seen["during"] == "crew-run-uuid"
     assert get_execution_uuid() is None
 
 
 @pytest.mark.asyncio
 async def test_crew_akickoff_inherits_enterprise_execution_uuid() -> None:
-    from unittest.mock import patch
-
     from crewai import Agent, Crew, Task
     from crewai.tasks.task_output import TaskOutput
 

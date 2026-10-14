@@ -1,7 +1,7 @@
 """Test Knowledge creation and querying functionality."""
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from crewai.knowledge.source.crew_docling_source import CrewDoclingSource
@@ -11,6 +11,7 @@ from crewai.knowledge.source.json_knowledge_source import JSONKnowledgeSource
 from crewai.knowledge.source.pdf_knowledge_source import PDFKnowledgeSource
 from crewai.knowledge.source.string_knowledge_source import StringKnowledgeSource
 from crewai.knowledge.source.text_file_knowledge_source import TextFileKnowledgeSource
+from crewai.knowledge.storage.knowledge_storage import KnowledgeStorage
 
 
 @pytest.fixture(autouse=True)
@@ -34,23 +35,27 @@ def reset_knowledge_storage(mock_vector_db):
     yield
 
 
-def test_single_short_string(mock_vector_db):
+def _saved_chunks(source):
+    storage = MagicMock(spec=KnowledgeStorage)
+    source.storage = storage
+    source.add()
+    storage.save.assert_called_once()
+    return storage.save.call_args.args[0]
+
+
+def test_single_short_string():
     content = "Brandon's favorite color is blue and he likes Mexican food."
     string_source = StringKnowledgeSource(
         content=content, metadata={"preference": "personal"}
     )
-    mock_vector_db.sources = [string_source]
-    mock_vector_db.query.return_value = [{"content": content, "score": 0.9}]
-    # Perform a query
-    query = "What is Brandon's favorite color?"
-    results = mock_vector_db.query(query)
 
-    assert any("blue" in result["content"].lower() for result in results)
-    mock_vector_db.query.assert_called_once()
+    assert _saved_chunks(string_source) == [
+        "Brandon's favorite color is blue and he likes Mexican food."
+    ]
 
 
 # @pytest.mark.vcr()
-def test_single_2k_character_string(mock_vector_db):
+def test_single_2k_character_string():
     content = (
         "Brandon is a software engineer who lives in San Francisco. "
         "He enjoys hiking and often visits the trails in the Bay Area. "
@@ -76,18 +81,11 @@ def test_single_2k_character_string(mock_vector_db):
     string_source = StringKnowledgeSource(
         content=content, metadata={"preference": "personal"}
     )
-    mock_vector_db.sources = [string_source]
-    mock_vector_db.query.return_value = [{"content": content, "score": 0.9}]
 
-    # Perform a query
-    query = "What is Brandon's favorite movie?"
-    results = mock_vector_db.query(query)
-
-    assert any("inception" in result["content"].lower() for result in results)
-    mock_vector_db.query.assert_called_once()
+    assert _saved_chunks(string_source) == [content]
 
 
-def test_multiple_short_strings(mock_vector_db):
+def test_multiple_short_strings():
     contents = [
         "Brandon loves hiking.",
         "Brandon has a dog named Max.",
@@ -98,21 +96,14 @@ def test_multiple_short_strings(mock_vector_db):
         for content in contents
     ]
 
-    mock_vector_db.query.return_value = [
-        {"content": "Brandon has a dog named Max.", "score": 0.9}
+    assert [_saved_chunks(source) for source in string_sources] == [
+        ["Brandon loves hiking."],
+        ["Brandon has a dog named Max."],
+        ["Brandon enjoys painting landscapes."],
     ]
 
-    mock_vector_db.sources = string_sources
 
-    # Perform a query
-    query = "What is the name of Brandon's pet?"
-    results = mock_vector_db.query(query)
-
-    assert any("max" in result["content"].lower() for result in results)
-    mock_vector_db.query.assert_called_once()
-
-
-def test_multiple_2k_character_strings(mock_vector_db):
+def test_multiple_2k_character_strings():
     contents = [
         (
             "Brandon is a software engineer who lives in San Francisco. "
@@ -166,21 +157,13 @@ def test_multiple_2k_character_strings(mock_vector_db):
         for content in contents
     ]
 
-    mock_vector_db.sources = string_sources
-    mock_vector_db.query.return_value = [{"content": contents[1], "score": 0.9}]
-
-    # Perform a query
-    query = "What is Brandon's favorite book?"
-    results = mock_vector_db.query(query)
-
-    assert any(
-        "the hitchhiker's guide to the galaxy" in result["content"].lower()
-        for result in results
-    )
-    mock_vector_db.query.assert_called_once()
+    assert [_saved_chunks(source) for source in string_sources] == [
+        [contents[0]],
+        [contents[1]],
+    ]
 
 
-def test_single_short_file(mock_vector_db, tmpdir):
+def test_single_short_file(tmpdir):
     content = "Brandon's favorite sport is basketball."
     file_path = Path(tmpdir.join("short_file.txt"))
     with open(file_path, "w") as f:
@@ -189,17 +172,14 @@ def test_single_short_file(mock_vector_db, tmpdir):
     file_source = TextFileKnowledgeSource(
         file_paths=[file_path], metadata={"preference": "personal"}
     )
-    mock_vector_db.sources = [file_source]
-    mock_vector_db.query.return_value = [{"content": content, "score": 0.9}]
-    # Perform a query
-    query = "What sport does Brandon like?"
-    results = mock_vector_db.query(query)
 
-    assert any("basketball" in result["content"].lower() for result in results)
-    mock_vector_db.query.assert_called_once()
+    assert file_source.content == {
+        file_path: "Brandon's favorite sport is basketball."
+    }
+    assert _saved_chunks(file_source) == ["Brandon's favorite sport is basketball."]
 
 
-def test_single_2k_character_file(mock_vector_db, tmpdir):
+def test_single_2k_character_file(tmpdir):
     content = (
         "Brandon is a software engineer who lives in San Francisco. "
         "He enjoys hiking and often visits the trails in the Bay Area. "
@@ -229,17 +209,11 @@ def test_single_2k_character_file(mock_vector_db, tmpdir):
     file_source = TextFileKnowledgeSource(
         file_paths=[file_path], metadata={"preference": "personal"}
     )
-    mock_vector_db.sources = [file_source]
-    mock_vector_db.query.return_value = [{"content": content, "score": 0.9}]
-    # Perform a query
-    query = "What is Brandon's favorite movie?"
-    results = mock_vector_db.query(query)
 
-    assert any("inception" in result["content"].lower() for result in results)
-    mock_vector_db.query.assert_called_once()
+    assert _saved_chunks(file_source) == [content]
 
 
-def test_multiple_short_files(mock_vector_db, tmpdir):
+def test_multiple_short_files(tmpdir):
     contents = [
         {
             "content": "Brandon works as a software engineer.",
@@ -265,18 +239,15 @@ def test_multiple_short_files(mock_vector_db, tmpdir):
         TextFileKnowledgeSource(file_paths=[path], metadata=metadata)
         for path, metadata in file_paths
     ]
-    mock_vector_db.sources = file_sources
-    mock_vector_db.query.return_value = [
-        {"content": "Brandon lives in New York.", "score": 0.9}
+
+    assert [_saved_chunks(source) for source in file_sources] == [
+        ["Brandon works as a software engineer."],
+        ["Brandon lives in New York."],
+        ["Brandon enjoys cooking Italian food."],
     ]
-    # Perform a query
-    query = "What city does he reside in?"
-    results = mock_vector_db.query(query)
-    assert any("new york" in result["content"].lower() for result in results)
-    mock_vector_db.query.assert_called_once()
 
 
-def test_multiple_2k_character_files(mock_vector_db, tmpdir):
+def test_multiple_2k_character_files(tmpdir):
     contents = [
         (
             "Brandon loves traveling and has visited over 20 countries. "
@@ -336,26 +307,15 @@ def test_multiple_2k_character_files(mock_vector_db, tmpdir):
         TextFileKnowledgeSource(file_paths=[path], metadata={"preference": "personal"})
         for path in file_paths
     ]
-    mock_vector_db.sources = file_sources
-    mock_vector_db.query.return_value = [
-        {
-            "content": "Brandon's favorite book is 'The Hitchhiker's Guide to the Galaxy'.",
-            "score": 0.9,
-        }
-    ]
-    # Perform a query
-    query = "What is Brandon's favorite book?"
-    results = mock_vector_db.query(query)
 
-    assert any(
-        "the hitchhiker's guide to the galaxy" in result["content"].lower()
-        for result in results
-    )
-    mock_vector_db.query.assert_called_once()
+    assert [_saved_chunks(source) for source in file_sources] == [
+        [contents[0]],
+        [contents[1]],
+    ]
 
 
 @pytest.mark.vcr()
-def test_hybrid_string_and_files(mock_vector_db, tmpdir):
+def test_hybrid_string_and_files(tmpdir):
     string_contents = [
         "Brandon is learning French.",
         "Brandon visited Paris last summer.",
@@ -381,43 +341,31 @@ def test_hybrid_string_and_files(mock_vector_db, tmpdir):
         for path in file_paths
     ]
 
-    # Combine string and file sources
-    mock_vector_db.sources = string_sources + file_sources
-    mock_vector_db.query.return_value = [{"content": file_contents[1], "score": 0.9}]
-
-    # Perform a query
-    query = "What is Brandon's favorite book?"
-    results = mock_vector_db.query(query)
-
-    assert any("the alchemist" in result["content"].lower() for result in results)
-    mock_vector_db.query.assert_called_once()
+    assert [_saved_chunks(source) for source in string_sources + file_sources] == [
+        ["Brandon is learning French."],
+        ["Brandon visited Paris last summer."],
+        ["Brandon prefers tea over coffee."],
+        ["Brandon's favorite book is 'The Alchemist'."],
+    ]
 
 
-def test_pdf_knowledge_source(mock_vector_db):
+def test_pdf_knowledge_source():
     current_dir = Path(__file__).parent
     pdf_path = current_dir / "crewai_quickstart.pdf"
 
     pdf_source = PDFKnowledgeSource(
         file_paths=[pdf_path], metadata={"preference": "personal"}
     )
-    mock_vector_db.sources = [pdf_source]
-    mock_vector_db.query.return_value = [
-        {"content": "crewai create crew latest-ai-development", "score": 0.9}
-    ]
 
-    # Perform a query
-    query = "How do you create a crew?"
-    results = mock_vector_db.query(query)
+    chunks = _saved_chunks(pdf_source)
 
-    assert any(
-        "crewai create crew latest-ai-development" in result["content"].lower()
-        for result in results
-    )
-    mock_vector_db.query.assert_called_once()
+    assert len(chunks) == 3
+    assert chunks[0].startswith("11/6/24, 11:29 AM Quickstart - CrewAI\n")
+    assert any("crewai create crew latest-ai-development" in c for c in chunks)
 
 
 @pytest.mark.vcr()
-def test_csv_knowledge_source(mock_vector_db, tmpdir):
+def test_csv_knowledge_source(tmpdir):
     """Test CSVKnowledgeSource with a simple CSV file."""
 
     csv_content = [
@@ -434,20 +382,16 @@ def test_csv_knowledge_source(mock_vector_db, tmpdir):
     csv_source = CSVKnowledgeSource(
         file_paths=[csv_path], metadata={"preference": "personal"}
     )
-    mock_vector_db.sources = [csv_source]
-    mock_vector_db.query.return_value = [
-        {"content": "Brandon is 30 years old.", "score": 0.9}
-    ]
 
-    # Perform a query
-    query = "How old is Brandon?"
-    results = mock_vector_db.query(query)
-
-    assert any("30" in result["content"] for result in results)
-    mock_vector_db.query.assert_called_once()
+    assert csv_source.content == {
+        csv_path: "Name Age City\nBrandon 30 New York\nAlice 25 Los Angeles\nBob 35 Chicago\n"
+    }
+    chunks = _saved_chunks(csv_source)
+    assert len(chunks) == 1
+    assert "Brandon 30 New York" in chunks[0]
 
 
-def test_json_knowledge_source(mock_vector_db, tmpdir):
+def test_json_knowledge_source(tmpdir):
     """Test JSONKnowledgeSource with a simple JSON file."""
 
     json_data = {
@@ -466,20 +410,20 @@ def test_json_knowledge_source(mock_vector_db, tmpdir):
     json_source = JSONKnowledgeSource(
         file_paths=[json_path], metadata={"preference": "personal"}
     )
-    mock_vector_db.sources = [json_source]
-    mock_vector_db.query.return_value = [
-        {"content": "Alice lives in Los Angeles.", "score": 0.9}
-    ]
 
-    # Perform a query
-    query = "Where does Alice reside?"
-    results = mock_vector_db.query(query)
+    assert json_source.content == {
+        json_path: (
+            "people:   -     name: Brandon\n    age: 30\n    city: New York\n\n"
+            "  -     name: Alice\n    age: 25\n    city: Los Angeles\n\n"
+            "  -     name: Bob\n    age: 35\n    city: Chicago\n\n\n"
+        )
+    }
+    chunks = _saved_chunks(json_source)
+    assert len(chunks) == 1
+    assert "name: Alice" in chunks[0]
 
-    assert any("los angeles" in result["content"].lower() for result in results)
-    mock_vector_db.query.assert_called_once()
 
-
-def test_excel_knowledge_source(mock_vector_db, tmpdir):
+def test_excel_knowledge_source(tmpdir):
     """Test ExcelKnowledgeSource with a simple Excel file."""
 
     import pandas as pd  # type: ignore[import-untyped]
@@ -496,17 +440,10 @@ def test_excel_knowledge_source(mock_vector_db, tmpdir):
     excel_source = ExcelKnowledgeSource(
         file_paths=[excel_path], metadata={"preference": "personal"}
     )
-    mock_vector_db.sources = [excel_source]
-    mock_vector_db.query.return_value = [
-        {"content": "Brandon is 30 years old.", "score": 0.9}
+
+    assert _saved_chunks(excel_source) == [
+        "Name,Age,City\nBrandon,30,New York\nAlice,25,Los Angeles\nBob,35,Chicago\n\n"
     ]
-
-    # Perform a query
-    query = "What is Brandon's age?"
-    results = mock_vector_db.query(query)
-
-    assert any("30" in result["content"] for result in results)
-    mock_vector_db.query.assert_called_once()
 
 
 @pytest.mark.vcr

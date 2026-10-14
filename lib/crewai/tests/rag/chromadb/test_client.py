@@ -339,6 +339,7 @@ class TestChromaDBClient:
 
         mock_collection.upsert.assert_called_once()
         call_args = mock_collection.upsert.call_args
+        assert call_args[1]["documents"] == ["Document 1", "Document 2", "Document 3"]
         assert call_args[1]["metadatas"] is None
 
     def test_add_documents_empty_list_raises_error(

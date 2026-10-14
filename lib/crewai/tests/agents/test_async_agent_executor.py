@@ -121,6 +121,7 @@ class TestAsyncAgentExecutor:
 
         mock_aget_llm.assert_called_once()
         assert isinstance(result, AgentFinish)
+        assert result.output == "Test result"
 
     @pytest.mark.asyncio
     async def test_ainvoke_loop_handles_tool_execution(
@@ -162,8 +163,15 @@ class TestAsyncAgentExecutor:
                         )
                         result = await executor._ainvoke_loop()
 
-        assert mock_tool_exec.called
+        mock_tool_exec.assert_awaited_once()
+        agent_action = mock_tool_exec.call_args.kwargs["agent_action"]
+        assert agent_action.tool == "test_tool"
+        assert agent_action.tool_input == '{"arg": "value"}'
+        mock_handle.assert_called_once_with(
+            agent_action, ToolResult(result="Tool executed", result_as_answer=False)
+        )
         assert isinstance(result, AgentFinish)
+        assert result.output == "Tool result processed"
 
     @pytest.mark.asyncio
     async def test_ainvoke_loop_respects_max_iterations(
@@ -208,7 +216,9 @@ class TestAsyncAgentExecutor:
                             result = await executor._ainvoke_loop()
 
         mock_max_iter.assert_called_once()
+        assert mock_ha.call_count == 2
         assert isinstance(result, AgentFinish)
+        assert result.output == "Forced answer"
 
     @pytest.mark.asyncio
     async def test_ainvoke_handles_exceptions(
@@ -286,8 +296,11 @@ class TestAsyncAgentExecutor:
             create_and_run_executor(3),
         )
 
-        assert len(results) == 3
-        assert all("output" in r for r in results)
+        assert results == [
+            {"output": "Result from executor 1"},
+            {"output": "Result from executor 2"},
+            {"output": "Result from executor 3"},
+        ]
         assert max_concurrent > 1, f"Expected concurrent execution, max concurrent was {max_concurrent}"
 
 
@@ -389,15 +402,6 @@ class TestInvokeStepCallback:
 
             async_callback.assert_called_once_with(answer)
             mock_run.assert_called_once()
-
-    def test_invoke_step_callback_with_none(
-        self, executor: CrewAgentExecutor
-    ) -> None:
-        """Test that no error is raised when step_callback is None."""
-        executor.step_callback = None
-        answer = AgentFinish(thought="thinking", output="test", text="final")
-
-        executor._invoke_step_callback(answer)
 
 
 class TestAsyncLLMResponseHelper:

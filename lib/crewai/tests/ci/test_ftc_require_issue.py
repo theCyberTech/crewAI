@@ -85,11 +85,7 @@ def test_open_issue_mention_blocks_close(body: str) -> None:
         issue_payloads={123: {"state": "open"}},
     )
 
-    assert not any(call[:3] == ["gh", "pr", "close"] for call in calls)
-    assert not any(
-        call[:3] == ["gh", "pr", "edit"] and "--add-label" in call for call in calls
-    )
-    assert any(call[:2] == ["gh", "api"] and call[2].endswith("/issues/123") for call in calls)
+    assert calls == [["gh", "api", "repos/crewAIInc/crewAI/issues/123"]]
 
 
 def test_foreign_repo_reference_closes_pr() -> None:
@@ -100,10 +96,18 @@ def test_foreign_repo_reference_closes_pr() -> None:
         expect_exit=None,
     )
 
-    assert any(call[:3] == ["gh", "pr", "close"] for call in calls)
-    assert any(
-        call[:3] == ["gh", "pr", "edit"] and call[call.index("--add-label") + 1] == "needs-issue"
-        for call in calls
-        if "--add-label" in call
-    )
-    assert not any(call[:2] == ["gh", "api"] for call in calls)
+    comment, *rest = calls
+    assert comment[:6] == ["gh", "pr", "comment", "99", "--repo", "crewAIInc/crewAI"]
+    assert rest == [
+        [
+            "gh",
+            "pr",
+            "edit",
+            "99",
+            "--repo",
+            "crewAIInc/crewAI",
+            "--add-label",
+            "needs-issue",
+        ],
+        ["gh", "pr", "close", "99", "--repo", "crewAIInc/crewAI"],
+    ]

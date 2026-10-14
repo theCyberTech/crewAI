@@ -1,5 +1,7 @@
 """Tests for async crew execution."""
 
+import asyncio
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -91,8 +93,10 @@ class TestAsyncCrewKickoff:
 
         result = await crew.akickoff(inputs={"topic": "AI"})
 
-        assert result is not None
         assert isinstance(result, CrewOutput)
+        assert result.raw == "Task result about AI"
+        assert task.description == "Test task for AI"
+        assert task.expected_output == "Expected output for AI"
         mock_execute.assert_called_once()
 
     @pytest.mark.asyncio
@@ -155,15 +159,14 @@ class TestAsyncCrewKickoff:
         self, mock_execute: AsyncMock, test_agent: Agent
     ) -> None:
         """Test that async kickoff calls before_kickoff_callbacks."""
-        callback_called = False
+        received: list[dict | None] = []
 
         def before_callback(inputs: dict | None) -> dict:
-            nonlocal callback_called
-            callback_called = True
-            return inputs or {}
+            received.append(inputs)
+            return {**(inputs or {}), "topic": "AI"}
 
         task = Task(
-            description="Test task",
+            description="Test task about {topic}",
             expected_output="Test output",
             agent=test_agent,
         )
@@ -181,9 +184,10 @@ class TestAsyncCrewKickoff:
         )
         mock_execute.return_value = mock_output
 
-        await crew.akickoff()
+        await crew.akickoff(inputs={"audience": "devs"})
 
-        assert callback_called
+        assert received == [{"audience": "devs"}]
+        assert task.description == "Test task about AI"
 
     @pytest.mark.asyncio
     @patch("crewai.task.Task.aexecute_sync", new_callable=AsyncMock)
@@ -191,11 +195,11 @@ class TestAsyncCrewKickoff:
         self, mock_execute: AsyncMock, test_agent: Agent
     ) -> None:
         """Test that async kickoff calls after_kickoff_callbacks."""
-        callback_called = False
+        received: list[str] = []
 
         def after_callback(result: CrewOutput) -> CrewOutput:
-            nonlocal callback_called
-            callback_called = True
+            received.append(result.raw)
+            result.raw = "Modified by callback"
             return result
 
         task = Task(
@@ -217,9 +221,10 @@ class TestAsyncCrewKickoff:
         )
         mock_execute.return_value = mock_output
 
-        await crew.akickoff()
+        result = await crew.akickoff()
 
-        assert callback_called
+        assert received == ["Task result"]
+        assert result.raw == "Modified by callback"
 
 
 class TestAsyncCrewKickoffForEach:
@@ -257,8 +262,8 @@ class TestAsyncCrewKickoffForEach:
         inputs = [{"topic": "AI"}, {"topic": "ML"}]
         results = await crew.akickoff_for_each(inputs)
 
-        assert len(results) == 2
         assert all(isinstance(r, CrewOutput) for r in results)
+        assert sorted(r.raw for r in results) == ["Result about AI", "Result about ML"]
 
     @pytest.mark.asyncio
     @patch("crewai.task.Task.aexecute_sync", new_callable=AsyncMock)
@@ -287,7 +292,8 @@ class TestAsyncCrewKickoffForEach:
         inputs = [{"topic": f"topic_{i}"} for i in range(3)]
         results = await crew.akickoff_for_each(inputs)
 
-        assert len(results) == 3
+        assert [r.raw for r in results] == ["Result", "Result", "Result"]
+        assert mock_execute.call_count == 3
 
 
 class TestAsyncTaskExecution:
@@ -329,9 +335,8 @@ class TestAsyncTaskExecution:
 
         result = await crew._aexecute_tasks(crew.tasks)
 
-        assert result is not None
         assert result.raw == "Second result"
-        assert len(result.tasks_output) == 2
+        assert [t.raw for t in result.tasks_output] == ["First result", "Second result"]
 
     @pytest.mark.asyncio
     @patch("crewai.task.Task.aexecute_sync", new_callable=AsyncMock)
@@ -370,7 +375,8 @@ class TestAsyncTaskExecution:
 
         result = await crew._aexecute_tasks(crew.tasks)
 
-        assert result is not None
+        assert result.raw == "Sync result"
+        assert [t.raw for t in result.tasks_output] == ["Async result", "Sync result"]
         assert mock_execute.call_count == 2
 
 
@@ -382,3 +388,22 @@ class TestAsyncProcessAsyncTasks:
         """Test processing empty list of async tasks."""
         result = await test_crew._aprocess_async_tasks([])
         assert result == []
+
+    @pytest.mark.asyncio
+    async def test_aprocess_async_tasks_awaits_pending(
+        self, test_crew: Crew, test_task: Task
+    ) -> None:
+        """Test that pending async tasks are awaited in order."""
+        output = TaskOutput(
+            description="Test task description",
+            raw="Async result",
+            agent="Test Agent",
+        )
+
+        async def produce() -> TaskOutput:
+            return output
+
+        pending = [(test_task, asyncio.create_task(produce()), 0)]
+        result = await test_crew._aprocess_async_tasks(pending)
+
+        assert result == [output]

@@ -32,11 +32,17 @@ class TestAsyncKnowledgeStorage:
     @pytest.mark.asyncio
     async def test_asearch_empty_query_raises_error(self):
         """Test that asearch handles empty query."""
+        mock_client = MagicMock()
+        mock_client.asearch = AsyncMock(
+            return_value=[{"content": "test result", "score": 0.9}]
+        )
         storage = KnowledgeStorage(collection_name="test_collection")
+        storage._client = mock_client
 
         # Empty query should not raise but return empty results due to error handling
         results = await storage.asearch([])
         assert results == []
+        mock_client.asearch.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_asave_calls_client_methods(self):
@@ -53,7 +59,10 @@ class TestAsyncKnowledgeStorage:
         mock_client.aget_or_create_collection.assert_called_once_with(
             collection_name="knowledge_test_collection"
         )
-        mock_client.aadd_documents.assert_called_once()
+        mock_client.aadd_documents.assert_called_once_with(
+            collection_name="knowledge_test_collection",
+            documents=[{"content": "document 1"}, {"content": "document 2"}],
+        )
 
     @pytest.mark.asyncio
     async def test_areset_calls_client_delete(self):
@@ -125,7 +134,7 @@ class TestAsyncKnowledge:
 
         await knowledge.aadd_sources()
 
-        mock_source.aadd.assert_called_once()
+        mock_source.aadd.assert_awaited_once_with()
         assert mock_source.storage == mock_storage
 
     @pytest.mark.asyncio
@@ -142,7 +151,7 @@ class TestAsyncKnowledge:
 
         await knowledge.areset()
 
-        mock_storage.areset.assert_called_once()
+        mock_storage.areset.assert_awaited_once_with()
 
     @pytest.mark.asyncio
     async def test_areset_raises_when_storage_not_initialized(self):
@@ -172,8 +181,10 @@ class TestAsyncStringKnowledgeSource:
 
         await source.aadd()
 
-        mock_storage.asave.assert_called_once()
-        assert len(source.chunks) > 0
+        mock_storage.asave.assert_awaited_once_with(
+            ["Test content for async processing"]
+        )
+        assert source.chunks == ["Test content for async processing"]
 
     @pytest.mark.asyncio
     async def test_aadd_raises_without_storage(self):

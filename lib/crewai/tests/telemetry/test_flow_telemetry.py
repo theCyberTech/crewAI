@@ -439,6 +439,7 @@ def test_no_duration_is_reported_without_a_recorded_start(
         flow,
         FlowFinishedEvent(flow_name="NeverStartedFlow", result="ok", state={}),
     )
+    assert crewai_event_bus.flush()
 
     assert durations == []
 
@@ -460,6 +461,7 @@ def test_duration_is_reported_once_per_run(
     crewai_event_bus.emit(
         flow, FlowFinishedEvent(flow_name="OkFlow", result="ok", state={})
     )
+    assert crewai_event_bus.flush()
 
     assert len(durations) == 1
 

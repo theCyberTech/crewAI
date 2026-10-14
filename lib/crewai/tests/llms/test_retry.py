@@ -48,7 +48,7 @@ class _RetryingLLM(BaseLLM):
 def test_throttling_error_classifier_recognizes_transient_provider_throttles(
     error: Exception,
 ) -> None:
-    assert _ThrottlingErrorClassifier.is_throttling_error(error)
+    assert _ThrottlingErrorClassifier.is_throttling_error(error) is True
 
 
 def test_throttling_error_classifier_follows_exception_causes() -> None:
@@ -58,7 +58,13 @@ def test_throttling_error_classifier_follows_exception_causes() -> None:
         wrapped = RuntimeError("provider request failed")
         wrapped.__cause__ = cause
 
-    assert _ThrottlingErrorClassifier.is_throttling_error(wrapped)
+    assert _ThrottlingErrorClassifier.is_throttling_error(wrapped) is True
+    assert (
+        _ThrottlingErrorClassifier.is_throttling_error(
+            RuntimeError("provider request failed")
+        )
+        is False
+    )
 
 
 @pytest.mark.parametrize(
@@ -72,7 +78,7 @@ def test_throttling_error_classifier_follows_exception_causes() -> None:
 def test_throttling_error_classifier_rejects_non_transient_errors(
     error: Exception,
 ) -> None:
-    assert not _ThrottlingErrorClassifier.is_throttling_error(error)
+    assert _ThrottlingErrorClassifier.is_throttling_error(error) is False
 
 
 def test_get_retry_delay_seconds_uses_exponential_backoff() -> None:

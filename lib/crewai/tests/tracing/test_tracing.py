@@ -362,7 +362,7 @@ class TestTraceListenerSetup:
 
             crew = Crew(agents=[agent], tasks=[task], verbose=True)
             result = crew.kickoff()
-            assert result is not None
+            assert result.raw == "Hello, World!"
 
             from crewai.events.event_bus import crewai_event_bus
 
@@ -625,7 +625,7 @@ class TestTraceListenerSetup:
 
             handler.handle_execution_completion()
 
-            mock_mark_completed.assert_called_once()
+            mock_mark_completed.assert_called_once_with(user_consented=False)
 
     def test_trace_batch_marked_as_failed_on_finalize_error(self):
         """Test that trace batch is marked as failed when finalization returns non-200 status"""
@@ -1398,7 +1398,7 @@ class TestAuthFailbackToEphemeral:
 
         assert bm.trace_batch_id is None
         # Called only once — no recursive fallback
-        mock_ephemeral.assert_called()
+        assert mock_ephemeral.call_count == 1
 
     def test_401_fallback_ephemeral_also_fails(self):
         """If ephemeral fallback also fails, trace_batch_id is cleared."""

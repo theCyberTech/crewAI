@@ -10,14 +10,13 @@ import pytest
 
 def test_fingerprint_creation_with_defaults():
     """Test creating a Fingerprint with default values."""
+    before = datetime.now()
     fingerprint = Fingerprint()
+    after = datetime.now()
 
-    assert fingerprint.uuid_str is not None
-    uuid_obj = uuid.UUID(fingerprint.uuid_str)
-    assert isinstance(uuid_obj, uuid.UUID)
-
-    assert isinstance(fingerprint.created_at, datetime)
-
+    assert uuid.UUID(fingerprint.uuid_str).version == 4
+    assert fingerprint.uuid_str != Fingerprint().uuid_str
+    assert before <= fingerprint.created_at <= after
     assert fingerprint.metadata == {}
 
 
@@ -39,7 +38,7 @@ def test_fingerprint_uuid_cannot_be_set():
     fingerprint = Fingerprint(uuid_str=original_uuid)
 
     assert fingerprint.uuid_str != original_uuid
-    assert uuid.UUID(fingerprint.uuid_str)
+    assert uuid.UUID(fingerprint.uuid_str).version == 4
 
 
 def test_fingerprint_created_at_cannot_be_set():
@@ -67,11 +66,8 @@ def test_fingerprint_deterministic_generation():
     fingerprint1 = Fingerprint.generate(seed)
     fingerprint2 = Fingerprint.generate(seed)
 
-    assert fingerprint1.uuid_str == fingerprint2.uuid_str
-
-    uuid_str1 = Fingerprint._generate_uuid(seed)
-    uuid_str2 = Fingerprint._generate_uuid(seed)
-    assert uuid_str1 == uuid_str2
+    assert fingerprint1.uuid_str == "98c4b66d-28d1-5f04-b818-3c33c1a7015d"
+    assert fingerprint2.uuid_str == "98c4b66d-28d1-5f04-b818-3c33c1a7015d"
 
 
 def test_fingerprint_generate_classmethod():

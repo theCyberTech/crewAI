@@ -55,17 +55,6 @@ def simple_crew(researcher: Agent, simple_task: Task) -> Crew:
     )
 
 
-@pytest.fixture
-def streaming_crew(researcher: Agent, simple_task: Task) -> Crew:
-    """Create a streaming crew with one agent and one task."""
-    return Crew(
-        agents=[researcher],
-        tasks=[simple_task],
-        verbose=False,
-        stream=True,
-    )
-
-
 class TestStreamChunk:
     """Tests for StreamChunk model."""
 
@@ -182,19 +171,6 @@ class TestFlowStreamingOutput:
 
 class TestCrewKickoffStreaming:
     """Tests for Crew(stream=True).kickoff() method."""
-
-    def test_kickoff_streaming_returns_streaming_output(self, streaming_crew: Crew) -> None:
-        """Test that kickoff with stream=True returns CrewStreamingOutput."""
-        with patch.object(Crew, "kickoff") as mock_kickoff:
-            mock_output = MagicMock()
-            mock_output.raw = "Test output"
-
-            def side_effect(*args: Any, **kwargs: Any) -> Any:
-                return mock_output
-            mock_kickoff.side_effect = side_effect
-
-        streaming = streaming_crew.kickoff()
-        assert isinstance(streaming, CrewStreamingOutput)
 
     def test_kickoff_streaming_captures_chunks(self, researcher: Agent, simple_task: Task) -> None:
         """Test that streaming captures LLM chunks."""
@@ -318,36 +294,6 @@ class TestCrewKickoffStreamingAsync:
     """Tests for Crew(stream=True).kickoff_async() method."""
 
     @pytest.mark.asyncio
-    async def test_kickoff_streaming_async_returns_streaming_output(
-        self, researcher: Agent, simple_task: Task
-    ) -> None:
-        """Test that kickoff_async with stream=True returns CrewStreamingOutput."""
-        crew = Crew(
-            agents=[researcher],
-            tasks=[simple_task],
-            verbose=False,
-            stream=True,
-        )
-
-        mock_output = MagicMock()
-        mock_output.raw = "Test output"
-
-        original_kickoff = Crew.kickoff
-        call_count = [0]
-
-        def mock_kickoff_fn(self: Any, inputs: Any = None, **kwargs: Any) -> Any:
-            call_count[0] += 1
-            if call_count[0] == 1:
-                return original_kickoff(self, inputs, **kwargs)
-            else:
-                return mock_output
-
-        with patch.object(Crew, "kickoff", mock_kickoff_fn):
-            streaming = await crew.kickoff_async()
-
-        assert isinstance(streaming, CrewStreamingOutput)
-
-    @pytest.mark.asyncio
     async def test_kickoff_streaming_async_captures_chunks(
         self, researcher: Agent, simple_task: Task
     ) -> None:
@@ -433,6 +379,8 @@ class TestFlowKickoffStreaming:
         flow.stream = True
         streaming = flow.kickoff()
         assert isinstance(streaming, StreamSession)
+        list(streaming)
+        assert streaming.result == "result"
 
     def test_flow_kickoff_streaming_captures_chunks(self) -> None:
         """Test that flow streaming captures LLM chunks from crew execution."""
@@ -546,6 +494,9 @@ class TestFlowKickoffStreamingAsync:
         flow.stream = True
         streaming = await flow.kickoff_async()
         assert isinstance(streaming, AsyncStreamSession)
+        async for _ in streaming:
+            pass
+        assert streaming.result == "async result"
 
     @pytest.mark.asyncio
     async def test_flow_kickoff_streaming_async_captures_chunks(self) -> None:
@@ -749,8 +700,8 @@ class TestStreamingEdgeCases:
             assert isinstance(streaming, CrewStreamingOutput)
             chunks = list(streaming)
 
-        assert len(chunks) >= 1
-        assert streaming.is_completed
+        assert [c.content for c in chunks] == ["Task 1"]
+        assert streaming.is_completed is True
 
 
 class TestStreamingCancellation:
@@ -793,8 +744,9 @@ class TestStreamingCancellation:
 
         await streaming.aclose()
         await streaming.aclose()
-        assert not streaming.is_cancelled
-        assert streaming.is_completed
+        assert streaming.is_cancelled is False
+        assert streaming.is_completed is True
+        assert streaming.get_full_text() == "test"
 
     @pytest.mark.asyncio
     async def test_async_context_manager(self) -> None:
@@ -829,8 +781,9 @@ class TestStreamingCancellation:
                 if chunk.content == "chunk-2":
                     break
 
-        assert streaming.is_cancelled
-        assert streaming.is_completed
+        assert streaming.is_cancelled is True
+        assert streaming.is_completed is True
+        assert streaming.get_full_text() == "chunk-0chunk-1chunk-2"
 
     def test_close_cancels_sync_streaming(self) -> None:
         """Test that close() stops sync streaming and marks as cancelled."""
@@ -848,8 +801,10 @@ class TestStreamingCancellation:
 
         streaming.close()
 
-        assert streaming.is_cancelled
-        assert streaming.is_completed
+        assert streaming.is_cancelled is True
+        assert streaming.is_completed is True
+        assert [c.content for c in collected] == ["chunk-0", "chunk-1", "chunk-2"]
+        assert list(streaming) == []
 
     def test_close_idempotent(self) -> None:
         """Test that calling close() multiple times is safe."""
@@ -861,8 +816,9 @@ class TestStreamingCancellation:
 
         streaming.close()
         streaming.close()
-        assert not streaming.is_cancelled
-        assert streaming.is_completed
+        assert streaming.is_cancelled is False
+        assert streaming.is_completed is True
+        assert streaming.get_full_text() == "test"
 
     @pytest.mark.asyncio
     async def test_flow_aclose(self) -> None:
@@ -875,8 +831,9 @@ class TestStreamingCancellation:
             pass
 
         await streaming.aclose()
-        assert not streaming.is_cancelled
-        assert streaming.is_completed
+        assert streaming.is_cancelled is False
+        assert streaming.is_completed is True
+        assert streaming.get_full_text() == "flow-chunk"
 
     @pytest.mark.asyncio
     async def test_flow_async_context_manager(self) -> None:
@@ -890,8 +847,9 @@ class TestStreamingCancellation:
             async for _ in streaming:
                 pass
 
-        assert not streaming.is_cancelled
-        assert streaming.is_completed
+        assert streaming.is_cancelled is False
+        assert streaming.is_completed is True
+        assert streaming.get_full_text() == "flow-chunk"
 
     def test_flow_close(self) -> None:
         """Test that FlowStreamingOutput close() is no-op after normal completion."""
@@ -902,27 +860,9 @@ class TestStreamingCancellation:
         list(streaming)
 
         streaming.close()
-        assert not streaming.is_cancelled
-
-
-class TestStreamingImports:
-    """Tests for correct imports of streaming types."""
-
-    def test_streaming_types_importable_from_types_module(self) -> None:
-        """Test that streaming types can be imported from crewai.types.streaming."""
-        from crewai.types.streaming import (
-            CrewStreamingOutput,
-            FlowStreamingOutput,
-            StreamChunk,
-            StreamChunkType,
-            ToolCallChunk,
-        )
-
-        assert CrewStreamingOutput is not None
-        assert FlowStreamingOutput is not None
-        assert StreamChunk is not None
-        assert StreamChunkType is not None
-        assert ToolCallChunk is not None
+        assert streaming.is_cancelled is False
+        assert streaming.is_completed is True
+        assert streaming.get_full_text() == "flow-chunk"
 
 
 class TestConcurrentStreamIsolation:

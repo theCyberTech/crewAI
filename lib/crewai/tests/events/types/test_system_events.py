@@ -4,6 +4,7 @@ import signal
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from crewai.events.event_bus import crewai_event_bus
 from crewai.events.types.system_events import (
@@ -109,7 +110,7 @@ class TestSignalEventAdapter:
     def test_adapter_rejects_invalid_type(self) -> None:
         """Test adapter rejects unknown signal type."""
         data = {"type": "SIGKILL"}
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError, match="SIGKILL"):
             signal_event_adapter.validate_python(data)
 
 

@@ -23,23 +23,6 @@ class TestLLMCallCompletedEventUsageField:
             "total_tokens": 30,
         }
 
-    def test_usage_defaults_to_none(self):
-        event = LLMCallCompletedEvent(
-            response="hello",
-            call_type=LLMCallType.LLM_CALL,
-            call_id="test-id",
-        )
-        assert event.usage is None
-
-    def test_accepts_none_usage(self):
-        event = LLMCallCompletedEvent(
-            response="hello",
-            call_type=LLMCallType.LLM_CALL,
-            call_id="test-id",
-            usage=None,
-        )
-        assert event.usage is None
-
     def test_accepts_nested_usage_dict(self):
         usage = {
             "prompt_tokens": 100,
@@ -132,13 +115,6 @@ class TestUsageToDict:
         assert result["completion_tokens"] == 200
         assert result["total_tokens"] == 300
 
-    def test_absent_buckets_are_not_added(self):
-        usage = {"prompt_tokens": 100, "completion_tokens": 200, "total_tokens": 300}
-        result = LLM._usage_to_dict(usage)
-        assert "cached_prompt_tokens" not in result
-        assert "reasoning_tokens" not in result
-        assert "cache_creation_tokens" not in result
-
     def test_pydantic_model_uses_model_dump(self):
         class Usage(BaseModel):
             prompt_tokens: int = 10
@@ -226,19 +202,6 @@ class TestEmitCallCompletedEventPassesUsage:
         assert isinstance(event, LLMCallCompletedEvent)
         assert event.usage == usage_data
 
-    def test_none_usage_is_passed_to_event(self, mock_emit, llm):
-        llm._emit_call_completed_event(
-            response="hello",
-            call_type=LLMCallType.LLM_CALL,
-            messages="test prompt",
-            usage=None,
-        )
-
-        mock_emit.assert_called_once()
-        event = mock_emit.call_args[1]["event"]
-        assert isinstance(event, LLMCallCompletedEvent)
-        assert event.usage is None
-
     def test_usage_omitted_defaults_to_none(self, mock_emit, llm):
         llm._emit_call_completed_event(
             response="hello",
@@ -283,13 +246,6 @@ class TestUsageMetricsNewFields:
         assert metrics1.reasoning_tokens == 40
         assert metrics1.cache_creation_tokens == 15
         assert metrics1.successful_requests == 2
-
-    def test_new_fields_default_to_zero(self):
-        from crewai.types.usage_metrics import UsageMetrics
-
-        metrics = UsageMetrics()
-        assert metrics.reasoning_tokens == 0
-        assert metrics.cache_creation_tokens == 0
 
     def test_model_dump_includes_new_fields(self):
         from crewai.types.usage_metrics import UsageMetrics

@@ -68,6 +68,7 @@ def test_database_file_is_not_locked_after_use(tmp_path: Path) -> None:
     _exercise(storage, _make_task())
     del storage
 
+    assert db_path.exists()
     os.remove(db_path)
     assert not db_path.exists()
 

@@ -362,9 +362,14 @@ def test_integration_valid_and_invalid():
         results.append(result)
 
     assert isinstance(results[0], AgentAction)
+    assert results[0].tool == "search"
+    assert results[0].tool_input == "what is the temperature in SF?"
     assert isinstance(results[1], AgentFinish)
+    assert results[1].output == "The temperature is 100 degrees"
     assert isinstance(results[2], OutputParserException)
+    assert "I missed the 'Action:' after 'Thought:'." in str(results[2])
     assert isinstance(results[3], OutputParserException)
+    assert "I missed the 'Action Input:' after 'Action:'." in str(results[3])
 
 
 # TODO: ADD TEST TO MAKE SURE ** REMOVAL DOESN'T MESS UP ANYTHING

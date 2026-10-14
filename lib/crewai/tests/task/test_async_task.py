@@ -171,7 +171,9 @@ class TestAsyncTaskExecution:
         await task.aexecute_sync()
 
         callback.assert_called_once()
-        assert isinstance(callback.call_args[0][0], TaskOutput)
+        (output,) = callback.call_args[0]
+        assert output is task.output
+        assert output.raw == "Async result"
 
     @pytest.mark.asyncio
     async def test_aexecute_sync_without_agent_raises(self) -> None:
@@ -284,7 +286,7 @@ class TestAsyncGuardrails:
 
         result = await task.aexecute_sync()
 
-        assert result is not None
+        assert result.raw == "Second result"
         assert call_count == 2
 
     @pytest.mark.asyncio
@@ -319,18 +321,15 @@ class TestAsyncGuardrails:
     ) -> None:
         """Test async execution with multiple guardrails."""
         mock_execute.return_value = "Async result"
-        guardrail1_called = False
-        guardrail2_called = False
+        seen: list[str] = []
 
         def guardrail1(output: TaskOutput) -> tuple[bool, str]:
-            nonlocal guardrail1_called
-            guardrail1_called = True
-            return True, output.raw
+            seen.append(output.raw)
+            return True, f"{output.raw} [g1]"
 
         def guardrail2(output: TaskOutput) -> tuple[bool, str]:
-            nonlocal guardrail2_called
-            guardrail2_called = True
-            return True, output.raw
+            seen.append(output.raw)
+            return True, f"{output.raw} [g2]"
 
         task = Task(
             description="Test task",
@@ -339,10 +338,10 @@ class TestAsyncGuardrails:
             guardrails=[guardrail1, guardrail2],
         )
 
-        await task.aexecute_sync()
+        result = await task.aexecute_sync()
 
-        assert guardrail1_called
-        assert guardrail2_called
+        assert seen == ["Async result", "Async result [g1]"]
+        assert result.raw == "Async result [g1] [g2]"
 
 
 class TestAsyncTaskOutput:

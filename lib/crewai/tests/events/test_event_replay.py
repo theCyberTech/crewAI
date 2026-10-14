@@ -92,22 +92,28 @@ class TestCheckpointListenerOptsOut:
     """CheckpointListener must early-return during replay."""
 
     def test_checkpoint_not_written_on_replay(self) -> None:
+        from crewai.flow.flow import Flow, start
         from crewai.state.checkpoint_config import CheckpointConfig
         from crewai.state.checkpoint_listener import _on_any_event
 
-        class FlowLike:
-            entity_type = "flow"
-            checkpoint = CheckpointConfig(trigger_all=True)
+        class CheckpointedFlow(Flow[dict]):
+            @start()
+            def m(self) -> str:
+                return "m"
 
         ev = _make_started("m", "id-1", 1)
+        source = CheckpointedFlow(checkpoint=CheckpointConfig(on_events=["*"]))
 
         with patch("crewai.state.checkpoint_listener._do_checkpoint") as do_cp:
             token = _replaying.set(True)
             try:
-                _on_any_event(FlowLike(), ev, state=None)
+                _on_any_event(source, ev, state=None)
             finally:
                 _replaying.reset(token)
             assert do_cp.call_count == 0
+
+            _on_any_event(source, ev, state=None)
+            do_cp.assert_called_once_with(None, source.checkpoint, ev)
 
 
 class TestCheckpointResumeReplaysEvents:

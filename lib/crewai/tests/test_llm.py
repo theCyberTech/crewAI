@@ -14,6 +14,7 @@ from crewai.events.event_types import (
 from crewai.llm import DEFAULT_CONTEXT_WINDOW_SIZE, LLM
 from crewai.llms.context_window import CONTEXT_WINDOW_USAGE_RATIO
 from crewai.llms.providers.anthropic.completion import AnthropicCompletion
+from crewai.types.usage_metrics import UsageMetrics
 from crewai.utilities.agent_utils import is_context_length_exceeded
 from crewai.utilities.exceptions.context_window_exceeding_exception import (
     LLMContextLengthExceededError,
@@ -55,8 +56,10 @@ def test_llm_call_with_string_input():
     llm = LLM(model="gpt-4o-mini")
 
     result = llm.call("Return the name of a random city in the world.")
-    assert isinstance(result, str)
-    assert len(result.strip()) > 0  # Ensure the response is not empty
+    assert result == (
+        'How about "Lisbon"? It’s the capital city of Portugal, known for its rich '
+        "history and vibrant culture."
+    )
 
 
 @pytest.mark.vcr()
@@ -70,9 +73,10 @@ def test_llm_call_with_string_input_and_callbacks():
     )
     usage_metrics = calc_handler.token_cost_process.get_summary()
 
-    assert isinstance(result, str)
-    assert len(result.strip()) > 0
-    assert usage_metrics.successful_requests == 1
+    assert result == "Why don't skeletons fight each other? \n\nThey don't have the guts!"
+    assert usage_metrics == UsageMetrics(
+        total_tokens=27, prompt_tokens=12, completion_tokens=15, successful_requests=1
+    )
 
 
 @pytest.mark.vcr()
@@ -225,13 +229,18 @@ def test_validate_call_params_supported():
         a: int
 
     # Patch supports_response_schema to simulate a supported model.
-    with patch("crewai.llm.supports_response_schema", return_value=True):
+    with patch(
+        "crewai.llm.supports_response_schema", return_value=True
+    ) as mock_supports:
         llm = LLM(
             model="openrouter/deepseek/deepseek-chat",
             response_format=DummyResponse,
             is_litellm=True,
         )
         llm._validate_call_params()
+    mock_supports.assert_called_once_with(
+        model="openrouter/deepseek/deepseek-chat", custom_llm_provider="openrouter"
+    )
 
 
 def test_validate_call_params_not_supported():
@@ -251,8 +260,12 @@ def test_validate_call_params_not_supported():
 
 
 def test_validate_call_params_no_response_format():
-    llm = LLM(model="gemini/gemini-1.5-pro", response_format=None, is_litellm=True)
-    llm._validate_call_params()
+    with patch(
+        "crewai.llm.supports_response_schema", return_value=False
+    ) as mock_supports:
+        llm = LLM(model="gemini/gemini-1.5-pro", response_format=None, is_litellm=True)
+        llm._validate_call_params()
+    mock_supports.assert_not_called()
 
 
 @pytest.mark.vcr()
@@ -778,8 +791,7 @@ def test_litellm_gpt5_call_succeeds_without_stop_error():
     """
     llm = LLM(model="gpt-5", stop=["Observation:"], is_litellm=True)
     result = llm.call("What is the capital of France?")
-    assert isinstance(result, str)
-    assert len(result) > 0
+    assert result == "Paris."
 
 
 def test_litellm_gpt5_does_not_send_stop_in_params():
@@ -1314,13 +1326,16 @@ async def test_usage_info_non_streaming_with_acall():
         result = await llm.acall("Tell me a joke.")
         mock_handle.assert_called_once()
 
-    # token usage assertions (robust)
-    assert llm._token_usage["successful_requests"] == 1
-    assert llm._token_usage["prompt_tokens"] > 0
-    assert llm._token_usage["completion_tokens"] > 0
-    assert llm._token_usage["total_tokens"] > 0
-
-    assert len(result) > 0
+    assert llm._token_usage == {
+        "total_tokens": 30,
+        "prompt_tokens": 12,
+        "completion_tokens": 18,
+        "successful_requests": 1,
+        "cached_prompt_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_creation_tokens": 0,
+    }
+    assert result == "Why did the scarecrow win an award? \n\nBecause he was outstanding in his field!"
 
 
 @pytest.mark.asyncio
@@ -1349,12 +1364,16 @@ async def test_usage_info_non_streaming_with_acall_and_stop():
         result = await llm.acall("Tell me a joke.")
         mock_handle.assert_called_once()
 
-    assert llm._token_usage["successful_requests"] == 1
-    assert llm._token_usage["prompt_tokens"] > 0
-    assert llm._token_usage["completion_tokens"] > 0
-    assert llm._token_usage["total_tokens"] > 0
-
-    assert len(result) > 0
+    assert llm._token_usage == {
+        "total_tokens": 29,
+        "prompt_tokens": 12,
+        "completion_tokens": 17,
+        "successful_requests": 1,
+        "cached_prompt_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_creation_tokens": 0,
+    }
+    assert result == "Why did the scarecrow win an award?\n\nBecause he was outstanding in his field!"
 
 
 @pytest.mark.asyncio
@@ -1384,12 +1403,16 @@ async def test_usage_info_streaming_with_acall():
         mock_handle.assert_called_once()
 
 
-    assert llm._token_usage["successful_requests"] == 1
-    assert llm._token_usage["prompt_tokens"] > 0
-    assert llm._token_usage["completion_tokens"] > 0
-    assert llm._token_usage["total_tokens"] > 0
-
-    assert len(result) > 0
+    assert llm._token_usage == {
+        "total_tokens": 30,
+        "prompt_tokens": 12,
+        "completion_tokens": 18,
+        "successful_requests": 1,
+        "cached_prompt_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_creation_tokens": 0,
+    }
+    assert result == "Why did the scarecrow win an award? \n\nBecause he was outstanding in his field!"
 
 
 def _build_response_with_text_and_tool_calls():

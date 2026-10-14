@@ -13,6 +13,8 @@ from crewai.hooks.tool_hooks import (
     get_before_tool_call_hooks,
     register_after_tool_call_hook,
     register_before_tool_call_hook,
+    run_after_tool_call_hooks,
+    run_before_tool_call_hooks,
 )
 import pytest
 
@@ -151,9 +153,7 @@ class TestBeforeToolCallHooks:
         register_before_tool_call_hook(hook2)
         hooks = get_before_tool_call_hooks()
 
-        assert len(hooks) == 2
-        assert hook1 in hooks
-        assert hook2 in hooks
+        assert hooks == [hook1, hook2]
 
     def test_before_hook_can_block_execution(self, mock_tool):
         """Test that before hooks can block tool execution."""
@@ -162,30 +162,28 @@ class TestBeforeToolCallHooks:
                 return False
             return None
 
-        tool_input = {}
+        register_before_tool_call_hook(block_hook)
         context = ToolCallHookContext(
             tool_name="dangerous_tool",
-            tool_input=tool_input,
+            tool_input={},
             tool=mock_tool,
         )
 
-        result = block_hook(context)
-        assert result is False
+        assert run_before_tool_call_hooks(context) is True
 
     def test_before_hook_can_allow_execution(self, mock_tool):
         """Test that before hooks can explicitly allow execution."""
         def allow_hook(context):
             return None
 
-        tool_input = {}
+        register_before_tool_call_hook(allow_hook)
         context = ToolCallHookContext(
             tool_name="safe_tool",
-            tool_input=tool_input,
+            tool_input={},
             tool=mock_tool,
         )
 
-        result = allow_hook(context)
-        assert result is None
+        assert run_before_tool_call_hooks(context) is False
 
     def test_before_hook_can_modify_input(self, mock_tool):
         """Test that before hooks can modify tool input in-place."""
@@ -193,6 +191,7 @@ class TestBeforeToolCallHooks:
             context.tool_input["modified_by_hook"] = True
             return
 
+        register_before_tool_call_hook(modify_input_hook)
         tool_input = {"arg1": "value1"}
         context = ToolCallHookContext(
             tool_name="test_tool",
@@ -200,10 +199,8 @@ class TestBeforeToolCallHooks:
             tool=mock_tool,
         )
 
-        modify_input_hook(context)
-
-        assert "modified_by_hook" in context.tool_input
-        assert context.tool_input["modified_by_hook"] is True
+        assert run_before_tool_call_hooks(context) is False
+        assert tool_input == {"arg1": "value1", "modified_by_hook": True}
 
     def test_get_before_hooks_returns_copy(self):
         """Test that get_before_tool_call_hooks returns a copy."""
@@ -244,9 +241,7 @@ class TestAfterToolCallHooks:
         register_after_tool_call_hook(hook2)
         hooks = get_after_tool_call_hooks()
 
-        assert len(hooks) == 2
-        assert hook1 in hooks
-        assert hook2 in hooks
+        assert hooks == [hook1, hook2]
 
     def test_after_hook_can_modify_result(self, mock_tool):
         """Test that after hooks can modify the tool result."""
@@ -257,16 +252,15 @@ class TestAfterToolCallHooks:
                 return context.tool_result.replace("Original", "Modified")
             return None
 
-        tool_input = {}
+        register_after_tool_call_hook(modify_result_hook)
         context = ToolCallHookContext(
             tool_name="test_tool",
-            tool_input=tool_input,
+            tool_input={},
             tool=mock_tool,
             tool_result=original_result,
         )
 
-        modified = modify_result_hook(context)
-        assert modified == "Modified result"
+        assert run_after_tool_call_hooks(context) == "Modified result"
 
     def test_after_hook_returns_none_keeps_original(self, mock_tool):
         """Test that returning None keeps the original result."""
@@ -275,18 +269,15 @@ class TestAfterToolCallHooks:
         def no_change_hook(context):
             return None
 
-        tool_input = {}
+        register_after_tool_call_hook(no_change_hook)
         context = ToolCallHookContext(
             tool_name="test_tool",
-            tool_input=tool_input,
+            tool_input={},
             tool=mock_tool,
             tool_result=original_result,
         )
 
-        result = no_change_hook(context)
-
-        assert result is None
-        assert context.tool_result == original_result
+        assert run_after_tool_call_hooks(context) == "Original result"
 
     def test_get_after_hooks_returns_copy(self):
         """Test that get_after_tool_call_hooks returns a copy."""
@@ -331,10 +322,7 @@ class TestToolHooksIntegration:
             tool=mock_tool,
         )
 
-        hooks = get_before_tool_call_hooks()
-        for hook in hooks:
-            hook(context)
-
+        assert run_before_tool_call_hooks(context) is False
         assert execution_order == [1, 2, 3]
 
     def test_first_blocking_hook_stops_execution(self, mock_tool):
@@ -364,15 +352,7 @@ class TestToolHooksIntegration:
             tool=mock_tool,
         )
 
-        hooks = get_before_tool_call_hooks()
-        blocked = False
-        for hook in hooks:
-            result = hook(context)
-            if result is False:
-                blocked = True
-                break
-
-        assert blocked is True
+        assert run_before_tool_call_hooks(context) is True
         assert execution_order == [1, 2]
 
     def test_multiple_after_hooks_chain_modifications(self, mock_tool):
@@ -398,16 +378,7 @@ class TestToolHooksIntegration:
             tool_result="Original",
         )
 
-        hooks = get_after_tool_call_hooks()
-
-        result = context.tool_result
-        for hook in hooks:
-            context.tool_result = result
-            modified = hook(context)
-            if modified is not None:
-                result = modified
-
-        assert result == "Original [hook1] [hook2]"
+        assert run_after_tool_call_hooks(context) == "Original [hook1] [hook2]"
 
     def test_hooks_with_validation_and_sanitization(self, mock_tool):
         """Test a realistic scenario with validation and sanitization hooks."""
@@ -434,14 +405,7 @@ class TestToolHooksIntegration:
             tool=mock_tool,
         )
 
-        before_hooks = get_before_tool_call_hooks()
-        blocked = False
-        for hook in before_hooks:
-            if hook(blocked_context) is False:
-                blocked = True
-                break
-
-        assert blocked is True
+        assert run_before_tool_call_hooks(blocked_context) is True
 
         sanitize_context = ToolCallHookContext(
             tool_name="read_file",
@@ -450,16 +414,10 @@ class TestToolHooksIntegration:
             tool_result="Content: SECRET_KEY=abc123",
         )
 
-        after_hooks = get_after_tool_call_hooks()
-        result = sanitize_context.tool_result
-        for hook in after_hooks:
-            sanitize_context.tool_result = result
-            modified = hook(sanitize_context)
-            if modified is not None:
-                result = modified
-
-        assert "SECRET_KEY=[REDACTED]" in result
-        assert "abc123" not in result
+        assert (
+            run_after_tool_call_hooks(sanitize_context)
+            == "Content: SECRET_KEY=[REDACTED]"
+        )
 
 
     def test_unregister_before_hook(self):
@@ -467,20 +425,30 @@ class TestToolHooksIntegration:
         def test_hook(context):
             pass
 
+        def other_hook(context):
+            pass
+
         register_before_tool_call_hook(test_hook)
-        unregister_before_tool_call_hook(test_hook)
-        hooks = get_before_tool_call_hooks()
-        assert len(hooks) == 0
+        register_before_tool_call_hook(other_hook)
+
+        assert unregister_before_tool_call_hook(test_hook) is True
+        assert get_before_tool_call_hooks() == [other_hook]
+        assert unregister_before_tool_call_hook(test_hook) is False
 
     def test_unregister_after_hook(self):
         """Test that after hooks can be unregistered."""
         def test_hook(context):
             return None
 
+        def other_hook(context):
+            return None
+
         register_after_tool_call_hook(test_hook)
-        unregister_after_tool_call_hook(test_hook)
-        hooks = get_after_tool_call_hooks()
-        assert len(hooks) == 0
+        register_after_tool_call_hook(other_hook)
+
+        assert unregister_after_tool_call_hook(test_hook) is True
+        assert get_after_tool_call_hooks() == [other_hook]
+        assert unregister_after_tool_call_hook(test_hook) is False
 
     def test_clear_all_tool_call_hooks(self):
         """Test that all tool call hooks can be cleared."""
@@ -489,9 +457,10 @@ class TestToolHooksIntegration:
 
         register_before_tool_call_hook(test_hook)
         register_after_tool_call_hook(test_hook)
-        clear_all_tool_call_hooks()
-        hooks = get_before_tool_call_hooks()
-        assert len(hooks) == 0
+
+        assert clear_all_tool_call_hooks() == (1, 1)
+        assert get_before_tool_call_hooks() == []
+        assert get_after_tool_call_hooks() == []
 
     @pytest.mark.vcr()
     def test_lite_agent_hooks_integration_with_real_tool(self):

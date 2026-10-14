@@ -65,7 +65,7 @@ class TestFileStore:
         retrieved = get_task_files(self.task_id)
 
         assert retrieved is not None
-        assert "task_doc" in retrieved
+        assert retrieved["task_doc"].read() == b"test content"
 
     def test_clear_task_files(self) -> None:
         """Test clearing task files."""
@@ -88,8 +88,10 @@ class TestFileStore:
         merged = get_all_files(self.crew_id, self.task_id)
 
         assert merged is not None
-        assert "crew_doc" in merged
-        assert "task_doc" in merged
+        assert {name: f.read() for name, f in merged.items()} == {
+            "crew_doc": b"crew content",
+            "task_doc": b"task content",
+        }
 
     def test_get_all_files_task_overrides_crew(self) -> None:
         """Test that task files override crew files with same name."""
@@ -111,7 +113,9 @@ class TestFileStore:
         result = get_all_files(self.crew_id)
 
         assert result is not None
-        assert "doc" in result
+        assert {name: f.read() for name, f in result.items()} == {
+            "doc": b"test content"
+        }
 
     def test_get_all_files_returns_none_when_empty(self) -> None:
         """Test that get_all_files returns None when no files exist."""
@@ -164,8 +168,10 @@ class TestAsyncFileStore:
             merged = await aget_all_files(crew_id, task_id)
 
             assert merged is not None
-            assert "crew" in merged
-            assert "task" in merged
+            assert {name: f.read() for name, f in merged.items()} == {
+                "crew": b"crew",
+                "task": b"task",
+            }
         finally:
             await aclear_files(crew_id)
             await aclear_task_files(task_id)

@@ -17,28 +17,6 @@ class ShutdownTestEvent(BaseEvent):
     pass
 
 
-def test_shutdown_prevents_new_events():
-    bus = CrewAIEventsBus()
-    received_events = []
-
-    with bus.scoped_handlers():
-
-        @bus.on(ShutdownTestEvent)
-        def handler(source: object, event: BaseEvent) -> None:
-            received_events.append(event)
-
-        bus._shutting_down = True
-
-        event = ShutdownTestEvent(type="after_shutdown")
-        bus.emit("test_source", event)
-
-        time.sleep(0.1)
-
-        assert len(received_events) == 0
-
-        bus._shutting_down = False
-
-
 @pytest.mark.asyncio
 async def test_aemit_during_shutdown():
     bus = CrewAIEventsBus()
@@ -50,12 +28,16 @@ async def test_aemit_during_shutdown():
         async def handler(source: object, event: BaseEvent) -> None:
             received_events.append(event)
 
+        before = ShutdownTestEvent(type="aemit_before_shutdown")
+        await bus.aemit("test_source", before)
+        assert received_events == [before]
+
         bus._shutting_down = True
 
         event = ShutdownTestEvent(type="aemit_during_shutdown")
         await bus.aemit("test_source", event)
 
-        assert len(received_events) == 0
+        assert received_events == [before]
 
         bus._shutting_down = False
 

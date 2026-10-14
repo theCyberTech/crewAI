@@ -22,9 +22,9 @@ class TestCacheMarkerHelpers:
     def test_strip_is_idempotent(self) -> None:
         msg = {"role": "user", "content": "hi", CACHE_BREAKPOINT_KEY: True}
         strip_cache_breakpoint(msg)
-        assert CACHE_BREAKPOINT_KEY not in msg
+        assert msg == {"role": "user", "content": "hi"}
         strip_cache_breakpoint(msg)
-        assert CACHE_BREAKPOINT_KEY not in msg
+        assert msg == {"role": "user", "content": "hi"}
 
 
 class TestBaseFormatDoesNotMutate:
@@ -39,13 +39,17 @@ class TestBaseFormatDoesNotMutate:
             mark_cache_breakpoint({"role": "system", "content": "stable system"}),
             mark_cache_breakpoint({"role": "user", "content": "stable user"}),
         ]
+        expected = [
+            {"role": "system", "content": "stable system"},
+            {"role": "user", "content": "stable user"},
+        ]
         first = llm._format_messages(messages)
-        assert all(CACHE_BREAKPOINT_KEY not in m for m in first)
+        assert first == expected
         # Original list must STILL carry the markers
         assert messages[0][CACHE_BREAKPOINT_KEY] is True
         assert messages[1][CACHE_BREAKPOINT_KEY] is True
         second = llm._format_messages(messages)
-        assert all(CACHE_BREAKPOINT_KEY not in m for m in second)
+        assert second == expected
         assert messages[0][CACHE_BREAKPOINT_KEY] is True
         assert messages[1][CACHE_BREAKPOINT_KEY] is True
 
@@ -131,16 +135,19 @@ class TestAnthropicCacheStamping:
         ]
         formatted, system = llm._format_messages_for_anthropic(messages)
         # System still cached
-        assert isinstance(system, list)
+        assert system == [
+            {
+                "type": "text",
+                "text": "you are helpful",
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
         # No user message was marked → no user message should carry cache_control
-        for fm in formatted:
-            if fm.get("role") != "user":
-                continue
-            content = fm.get("content")
-            if isinstance(content, list):
-                for block in content:
-                    if isinstance(block, dict):
-                        assert "cache_control" not in block
+        assert formatted == [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "I will help you out."},
+            {"role": "user", "content": "ping"},
+        ]
 
     def test_list_content_user_marker_matches(self) -> None:
         """A pre-formatted user message with a single text block should still
@@ -170,13 +177,9 @@ class TestAnthropicCacheStamping:
         ]
         formatted, system = llm._format_messages_for_anthropic(messages)
         # No marker → system stays a plain string (no content-block conversion)
-        assert isinstance(system, str)
+        assert system == "no caching here"
         # No marker → no cache_control anywhere in formatted messages
-        for fm in formatted:
-            content = fm.get("content")
-            if isinstance(content, list):
-                for block in content:
-                    assert "cache_control" not in block
+        assert formatted == [{"role": "user", "content": "no caching here either"}]
 
 
 class TestNonAnthropicStripsMarker:
@@ -187,5 +190,7 @@ class TestNonAnthropicStripsMarker:
             mark_cache_breakpoint({"role": "user", "content": "hi"}),
         ]
         formatted = llm._format_messages(messages)
-        for m in formatted:
-            assert CACHE_BREAKPOINT_KEY not in m
+        assert formatted == [
+            {"role": "system", "content": "stable"},
+            {"role": "user", "content": "hi"},
+        ]

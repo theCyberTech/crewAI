@@ -128,11 +128,15 @@ class TestToolCallStreamingEventStructure:
 
         tool_call_events = get_tool_call_events(mock_emit)
 
-        assert len(tool_call_events) >= 2, "Should receive multiple tool call streaming events"
-
-        for evt in tool_call_events:
-            assert evt.tool_call is not None
-            assert evt.tool_call.function is not None
+        assert [evt.tool_call.function.arguments for evt in tool_call_events] == [
+            "",
+            '{"',
+            '{"city',
+            '{"city":"',
+            '{"city":"San',
+            '{"city":"San Francisco',
+            '{"city":"San Francisco"}',
+        ]
 
     @pytest.mark.vcr()
     def test_tool_call_events_have_consistent_tool_id(
@@ -255,14 +259,13 @@ class TestGeminiToolCallStreaming:
 
         tool_call_events = get_tool_call_events(mock_emit)
 
-        assert len(tool_call_events) >= 2, "Should receive at least 2 tool call events"
-
-        tool_ids = [
-            evt.tool_call.id
+        assert [
+            (evt.tool_call.id, evt.tool_call.function.name, evt.tool_call.function.arguments)
             for evt in tool_call_events
-            if evt.tool_call is not None and evt.tool_call.id
+        ] == [
+            ("call_0", "get_current_temperature", '{"city": "Paris"}'),
+            ("call_1", "get_current_temperature", '{"city": "London"}'),
         ]
-        assert len(set(tool_ids)) >= 2, "Each tool call should have a unique ID"
 
 
 class TestAzureToolCallStreaming:

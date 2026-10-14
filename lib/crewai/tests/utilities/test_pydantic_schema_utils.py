@@ -16,7 +16,7 @@ from copy import deepcopy
 from typing import Any
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from crewai.utilities.pydantic_schema_utils import (
     build_rich_field_description,
@@ -80,6 +80,8 @@ class TestSimpleTypes:
         Model = create_model_from_schema(schema)
         obj = Model(value=None)
         assert obj.value is None
+        with pytest.raises(ValidationError, match="Input should be None"):
+            Model(value="x")
 
 
 class TestRequiredOptional:
@@ -90,7 +92,7 @@ class TestRequiredOptional:
             "required": ["name"],
         }
         Model = create_model_from_schema(schema)
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError, match="name\n  Field required"):
             Model()
 
     def test_optional_field_defaults_to_none(self) -> None:
@@ -140,7 +142,9 @@ class TestEnumLiteral:
             "required": ["color"],
         }
         Model = create_model_from_schema(schema)
-        with pytest.raises(Exception):
+        with pytest.raises(
+            ValidationError, match="Input should be 'red', 'green' or 'blue'"
+        ):
             Model(color="yellow")
 
     def test_const_value(self) -> None:
@@ -594,14 +598,12 @@ class TestEdgeCases:
     def test_empty_properties(self) -> None:
         schema = {"type": "object", "properties": {}, "required": []}
         Model = create_model_from_schema(schema)
-        obj = Model()
-        assert obj is not None
+        assert Model().model_dump() == {}
 
     def test_no_properties_key(self) -> None:
         schema = {"type": "object"}
         Model = create_model_from_schema(schema)
-        obj = Model()
-        assert obj is not None
+        assert Model().model_dump() == {}
 
     def test_unknown_type_raises(self) -> None:
         schema = {
@@ -727,8 +729,12 @@ class TestForceAdditionalPropertiesFalse:
     def test_adds_empty_properties_and_required(self) -> None:
         schema = {"type": "object"}
         result = force_additional_properties_false(deepcopy(schema))
-        assert result["properties"] == {}
-        assert result["required"] == []
+        assert result == {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {},
+            "required": [],
+        }
 
     def test_recursive_nested_objects(self) -> None:
         schema = {
@@ -747,14 +753,14 @@ class TestForceAdditionalPropertiesFalse:
     def test_does_not_affect_non_objects(self) -> None:
         schema = {"type": "string"}
         result = force_additional_properties_false(deepcopy(schema))
-        assert "additionalProperties" not in result
+        assert result == {"type": "string"}
 
 
 class TestStripUnsupportedFormats:
     def test_removes_email_format(self) -> None:
         schema = {"type": "string", "format": "email"}
         result = strip_unsupported_formats(deepcopy(schema))
-        assert "format" not in result
+        assert result == {"type": "string"}
 
     def test_keeps_date_time(self) -> None:
         schema = {"type": "string", "format": "date-time"}
@@ -769,7 +775,7 @@ class TestStripUnsupportedFormats:
     def test_removes_uri_format(self) -> None:
         schema = {"type": "string", "format": "uri"}
         result = strip_unsupported_formats(deepcopy(schema))
-        assert "format" not in result
+        assert result == {"type": "string"}
 
     def test_recursive(self) -> None:
         schema = {
@@ -917,8 +923,17 @@ class TestEndToEndMCPSchema:
 
     def test_model_creation(self) -> None:
         Model = create_model_from_schema(self.MCP_SCHEMA)
-        assert Model is not None
         assert issubclass(Model, BaseModel)
+        assert {
+            name for name, field in Model.model_fields.items() if field.is_required()
+        } == {"query", "format", "filters"}
+        assert set(Model.model_fields) == {
+            "query",
+            "max_results",
+            "format",
+            "filters",
+            "sort_order",
+        }
 
     def test_valid_input_accepted(self) -> None:
         Model = create_model_from_schema(self.MCP_SCHEMA)
@@ -932,7 +947,9 @@ class TestEndToEndMCPSchema:
 
     def test_invalid_enum_rejected(self) -> None:
         Model = create_model_from_schema(self.MCP_SCHEMA)
-        with pytest.raises(Exception):
+        with pytest.raises(
+            ValidationError, match="Input should be 'json', 'csv' or 'xml'"
+        ):
             Model(
                 query="test",
                 format="yaml",
@@ -1122,10 +1139,8 @@ class TestCreateModelFromSchemaRecursive:
         assert len(instance.children) == 1
 
     def test_model_rejects_missing_required_field(self) -> None:
-        import pytest
-
         model = create_model_from_schema(deepcopy(RECURSIVE_NODE_SCHEMA), model_name="Node")
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError, match="name\n  Field required"):
             model(children=[])
 
     def test_mutual_recursion_schema(self) -> None:

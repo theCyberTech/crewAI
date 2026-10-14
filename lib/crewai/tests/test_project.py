@@ -194,7 +194,15 @@ def test_after_kickoff_modification():
 @pytest.mark.vcr()
 def test_before_kickoff_with_none_input():
     crew = InternalCrew()
-    crew.crew().kickoff(None)
+    result = crew.crew().kickoff(None)
+
+    assert result.raw.startswith(
+        "# Cutting-Edge Developments in Data Science – 2025 Comprehensive Report"
+    )
+    assert result.raw.endswith(" post processed")
+    assert crew.crew().tasks[0].description.startswith(
+        "Conduct a thorough research about {topic}"
+    )
 
 
 @pytest.mark.vcr()
@@ -397,6 +405,7 @@ class TestAsyncDecoratorSupport:
         assert isinstance(result, Agent), (
             f"Expected Agent, got {type(result).__name__}"
         )
+        assert result.role == "Typed Agent"
 
     def test_async_task_returns_task_not_coroutine(self):
         """Async task decorator should return Task, not coroutine."""
@@ -412,6 +421,7 @@ class TestAsyncDecoratorSupport:
         result = crew.typed_async_task()
 
         assert isinstance(result, Task), f"Expected Task, got {type(result).__name__}"
+        assert result.description == "Typed Description"
 
 
 def test_internal_crew_with_mcp():

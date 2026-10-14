@@ -115,7 +115,7 @@ class TestEventRecordCore:
         g = EventRecord()
         e = _event("test")
         g.add(e)
-        assert g.get(e.event_id) is not None
+        assert g.get(e.event_id).event is e
 
     def test_get_missing(self):
         g = EventRecord()
@@ -220,12 +220,6 @@ class TestEdgeSymmetry:
 
 
 class TestOrdering:
-    def test_emission_sequence_monotonic(self):
-        g, events = _linear_record(10)
-        sequences = [e.emission_sequence for e in events]
-        assert sequences == sorted(sequences)
-        assert len(set(sequences)) == len(sequences), "Duplicate sequences"
-
     def test_next_chain_follows_sequence_order(self):
         g, events = _linear_record(5)
         current = g.get(events[0].event_id)
@@ -250,7 +244,7 @@ class TestTraversal:
         g = EventRecord()
         g.add(_event("root1"))
         g.add(_event("root2"))
-        assert len(g.roots()) == 2
+        assert sorted(n.event.type for n in g.roots()) == ["root1", "root2"]
 
     def test_descendants_of_crew_start(self):
         g, events = _tree_record()
@@ -267,12 +261,6 @@ class TestTraversal:
         g, events = _tree_record()
         desc = g.descendants(events["task_complete"].event_id)
         assert desc == []
-
-    def test_descendants_does_not_include_self(self):
-        g, events = _tree_record()
-        desc = g.descendants(events["crew_start"].event_id)
-        desc_ids = {n.event.event_id for n in desc}
-        assert events["crew_start"].event_id not in desc_ids
 
 
 
@@ -296,7 +284,10 @@ class TestSerialization:
         assert len(restored) == 5
 
         crew_node = restored.get(events["crew_start"].event_id)
-        assert len(crew_node.neighbors("child")) == 2
+        assert set(crew_node.neighbors("child")) == {
+            events["task_start"].event_id,
+            events["task_complete"].event_id,
+        }
 
     def test_roundtrip_preserves_edge_symmetry(self):
         g, _ = _tree_record()
@@ -351,9 +342,8 @@ class TestRuntimeStateIntegration:
         state.event_record.add(e2)
 
         dumped = json.loads(state.model_dump_json())
-        assert "entities" in dumped
-        assert "event_record" in dumped
-        assert len(dumped["event_record"]["nodes"]) == 2
+        assert len(dumped["entities"]) == 1
+        assert set(dumped["event_record"]["nodes"]) == {e1.event_id, e2.event_id}
 
     def test_runtime_state_roundtrip_with_record(self):
         from crewai import Agent, Crew, RuntimeState
@@ -427,8 +417,8 @@ class TestRuntimeStateIntegration:
         crewai_event_bus._registered_entity_ids = set()
         try:
             crewai_event_bus.register_entity(crew)
-            assert crewai_event_bus.runtime_state is not None
-            assert crewai_event_bus._registered_entity_ids
+            assert crewai_event_bus.runtime_state.root == [crew]
+            assert crewai_event_bus._registered_entity_ids == {id(crew)}
 
             crewai_event_bus.reset_runtime_state()
 

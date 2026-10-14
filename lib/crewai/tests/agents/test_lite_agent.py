@@ -109,8 +109,15 @@ def test_agent_kickoff_preserves_parameters(verbose):
     assert agent.max_iter == max_iter
     assert agent.verbose == verbose
 
-    assert result is not None
-    assert result.raw is not None
+    sent_messages = mock_llm.call.call_args.args[0]
+    assert [m["content"] for m in sent_messages[:2]] == [
+        "You are Test Agent. Test Backstory\nYour personal goal is: Test Goal",
+        "\nCurrent Task: Test query",
+    ]
+    assert [
+        tool["function"]["name"] for tool in mock_llm.call.call_args.kwargs["tools"]
+    ] == ["search_web", "calculate"]
+    assert result.agent_role == "Test Agent"
 
 
 @pytest.mark.vcr()
@@ -215,8 +222,15 @@ def test_lite_agent_returns_usage_metrics():
         "What is the population of Tokyo? Return your structured output in JSON format with the following fields: summary, confidence"
     )
 
-    assert result.usage_metrics is not None
-    assert result.usage_metrics["total_tokens"] > 0
+    assert result.usage_metrics == {
+        "total_tokens": 284,
+        "prompt_tokens": 248,
+        "cached_prompt_tokens": 0,
+        "completion_tokens": 36,
+        "reasoning_tokens": 0,
+        "cache_creation_tokens": 0,
+        "successful_requests": 1,
+    }
 
 
 @pytest.mark.vcr()
@@ -234,10 +248,8 @@ def test_lite_agent_output_includes_messages():
 
     result = agent.kickoff("What is the population of Tokyo?")
 
-    assert isinstance(result, LiteAgentOutput)
-    assert hasattr(result, "messages")
-    assert isinstance(result.messages, list)
-    assert len(result.messages) > 0
+    assert [m["role"] for m in result.messages] == ["system", "user", "assistant"]
+    assert "What is the population of Tokyo?" in result.messages[1]["content"]
 
 
 @pytest.mark.vcr()
@@ -402,12 +414,16 @@ def test_guardrail_is_called_using_string():
             timeout=10,
         )
     assert success, "Timeout waiting for successful guardrail event"
-    assert len(guardrail_events["started"]) >= 2
-    assert len(guardrail_events["completed"]) >= 2
-    assert not guardrail_events["completed"][0].success
-    successful_events = [e for e in guardrail_events["completed"] if e.success]
-    assert len(successful_events) >= 1, "Expected at least one successful guardrail completion"
-    assert result is not None
+    assert [e.retry_count for e in guardrail_events["started"]] == [0, 1]
+    assert [(e.success, e.error) for e in guardrail_events["completed"]] == [
+        (False, "Missing required format — please use a numbered list"),
+        (True, None),
+    ]
+    assert call_count["n"] == 2
+    assert result.raw.startswith(
+        "As of 2024, the top 5 best soccer players in the world, based on recent "
+        "performances, skills, and impact on the game, are:"
+    )
 
 
 @pytest.mark.vcr()
@@ -658,8 +674,18 @@ def test_agent_kickoff_with_platform_tools(mock_get, mock_post):
 
     result = agent.kickoff("Create a GitHub issue")
 
-    assert isinstance(result, LiteAgentOutput)
-    assert result.raw is not None
+    assert result.raw == (
+        "I have successfully created a test GitHub issue. "
+        "You can view it at [this link](https://github.com/test/repo/issues/1)."
+    )
+    mock_get.assert_called_once_with(
+        "https://fake.crewai.com/crewai_plus/api/v1/integrations/actions",
+        headers={"Authorization": "Bearer test_token"},
+        timeout=30,
+        params={"apps": "github"},
+        verify=True,
+    )
+    assert [tool.name for tool in agent.tools] == ["github_create_issue"]
 
 
 @patch.dict("os.environ", {"EXA_API_KEY": "test_exa_key"})
@@ -728,8 +754,8 @@ def test_lite_agent_inside_flow_sync():
 
     assert "flow_started" in execution_log
     assert "agent_completed" in execution_log
-    assert result is not None
     assert isinstance(result, LiteAgentOutput)
+    assert result.raw == "4"
 
 
 @pytest.mark.vcr()
@@ -752,9 +778,8 @@ def test_lite_agent_inside_flow_with_tools():
     flow = TestFlow()
     result = flow.kickoff()
 
-    assert result is not None
     assert isinstance(result, LiteAgentOutput)
-    assert result.raw is not None
+    assert result.agent_role == "Calculator Agent"
 
 
 @pytest.mark.vcr()
@@ -786,8 +811,8 @@ def test_multiple_agents_in_same_flow():
     flow = MultiAgentFlow()
     result = flow.kickoff()
 
-    assert result is not None
     assert isinstance(result, LiteAgentOutput)
+    assert result.agent_role == "Second Agent"
 
 
 @pytest.mark.vcr()
@@ -809,8 +834,8 @@ def test_lite_agent_kickoff_async_inside_flow():
     flow = AsyncAgentFlow()
     result = flow.kickoff()
 
-    assert result is not None
     assert isinstance(result, LiteAgentOutput)
+    assert result.raw == "The answer to 3 + 3 is 6."
 
 
 @pytest.mark.vcr()
@@ -830,9 +855,8 @@ def test_lite_agent_standalone_still_works():
 
     result = agent.kickoff(messages="What is 5+5? Reply with just the number.")
 
-    assert result is not None
     assert isinstance(result, LiteAgentOutput)
-    assert result.raw is not None
+    assert result.raw == "10"
 
 
 def test_agent_kickoff_with_files_parameter():
@@ -1040,8 +1064,7 @@ def test_lite_agent_verbose_false_suppresses_printer_output():
     with patch("crewai.lite_agent.PRINTER", mock_printer):
         result = agent.kickoff("Say hello")
 
-    assert result is not None
-    assert isinstance(result, LiteAgentOutput)
+    assert result.raw == "Hello!"
     mock_printer.print.assert_not_called()
 
 

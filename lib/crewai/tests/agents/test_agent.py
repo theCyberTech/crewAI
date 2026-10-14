@@ -130,8 +130,12 @@ def test_agent_copy_does_not_emit_i18n_deprecation_warning():
 
     with warnings.catch_warnings(record=True) as caught_warnings:
         warnings.simplefilter("always", DeprecationWarning)
-        agent.copy()
+        copied = agent.copy()
 
+    assert copied is not agent
+    assert copied.role == "test role"
+    assert copied.goal == "test goal"
+    assert copied.backstory == "test backstory"
     assert not any(
         "Agent.i18n is deprecated" in str(w.message) for w in caught_warnings
     )
@@ -577,6 +581,7 @@ def test_agent_respect_the_max_rpm_set_over_crew_rpm(capsys):
         moveon.return_value = True
         crew.kickoff()
         captured = capsys.readouterr()
+        assert agent._rpm_controller.max_rpm == 10
         assert "Max RPM reached, waiting for next minute to start." not in captured.out
         moveon.assert_not_called()
 
@@ -635,7 +640,11 @@ def test_agent_without_max_rpm_respects_crew_rpm(capsys):
     with patch.object(RPMController, "_wait_for_next_minute") as moveon:
         moveon.return_value = True
         result = crew.kickoff()
-        assert result is not None
+        captured = capsys.readouterr()
+        assert agent2._rpm_controller.max_rpm == 1
+        assert result.tasks_output[0].raw == "Hi!"
+        assert result.raw == "42"
+        assert "Max RPM reached, waiting for next minute to start." in captured.out
         assert moveon.called
 
 
@@ -696,8 +705,14 @@ def test_agent_step_callback():
         crew = Crew(agents=[agent1], tasks=tasks)
 
         callback.return_value = "ok"
-        crew.kickoff()
-        callback.assert_called()
+        result = crew.kickoff()
+        callback.assert_called_once()
+        step = callback.call_args.args[0]
+        assert isinstance(step, AgentFinish)
+        assert step.output == result.raw
+        assert step.output.startswith(
+            "```\nThought: To write an amazing paragraph on AI"
+        )
 
 
 def test_tool_result_as_answer_is_the_final_answer_for_the_agent() -> None:
@@ -933,8 +948,14 @@ def test_not_using_system_prompt():
     )
 
     agent.create_agent_executor()
-    assert not agent.agent_executor.prompt.get("user")
-    assert not agent.agent_executor.prompt.get("system")
+    prompt = agent.agent_executor.prompt
+    assert not prompt.get("user")
+    assert not prompt.get("system")
+    assert prompt["prompt"].startswith(
+        "You are {topic} specialist. I am the master of {role}\n"
+        "Your personal goal is: Figure {goal} out\n"
+        "Current Task: {input}"
+    )
 
 
 def test_using_system_prompt():
@@ -945,8 +966,12 @@ def test_using_system_prompt():
     )
 
     agent.create_agent_executor()
-    assert agent.agent_executor.prompt.get("user")
-    assert agent.agent_executor.prompt.get("system")
+    prompt = agent.agent_executor.prompt
+    assert prompt["system"] == (
+        "You are {topic} specialist. I am the master of {role}\n"
+        "Your personal goal is: Figure {goal} out"
+    )
+    assert prompt["user"].startswith("\nCurrent Task: {input}")
 
 
 def test_system_and_prompt_template():
@@ -2052,8 +2077,11 @@ def test_agent_with_only_crewai_knowledge():
     )
 
     crew = Crew(agents=[agent], tasks=[task], knowledge=mock_knowledge)
-    crew.kickoff()
-    mock_knowledge.query.assert_called_once()
+    result = crew.kickoff()
+    mock_knowledge.query.assert_called_once_with(
+        ["Vidit's favorite color"], results_limit=3, score_threshold=0.35
+    )
+    assert result.raw == "Vidit's favorite color is blue."
 
 
 @pytest.mark.vcr()
@@ -2606,7 +2634,7 @@ def test_app_actions_propagated_to_platform_tools(mock_get_platform_tools):
     mock_get_platform_tools.assert_called_once()
     call_args = mock_get_platform_tools.call_args[1]
     assert set(call_args["apps"]) == {"gmail/send_email", "slack/update_status"}
-    assert len(tools) >= 1
+    assert [t.name for t in tools] == ["action_tool"]
 
 
 @patch.object(Agent, 'get_platform_tools')
@@ -2640,7 +2668,7 @@ def test_mixed_apps_and_actions_propagated(mock_get_platform_tools):
     call_args = mock_get_platform_tools.call_args[1]
     expected_apps = {"gmail", "slack", "gmail/create_task", "slack/update_status"}
     assert set(call_args["apps"]) == expected_apps
-    assert len(tools) >= 1
+    assert [t.name for t in tools] == ["combined_tool"]
 
 def test_agent_without_apps_no_platform_tools():
     """Test that agents without apps don't trigger platform tools integration."""
@@ -2658,7 +2686,10 @@ def test_agent_without_apps_no_platform_tools():
 
     crew = Crew(agents=[agent], tasks=[task])
 
-    tools = crew._prepare_tools(agent, task, [])
+    with patch.object(Agent, "get_platform_tools") as mock_get_platform_tools:
+        tools = crew._prepare_tools(agent, task, [])
+
+    mock_get_platform_tools.assert_not_called()
     assert tools == []
 
 

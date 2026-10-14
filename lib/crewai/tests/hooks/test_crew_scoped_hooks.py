@@ -565,9 +565,8 @@ class TestCrewScopedHookExecution:
 
         hook2(context)
 
-        # Note: We can't easily verify which hook belongs to which instance
-        # in this test without more introspection, but the fact that it doesn't
-        # crash and hooks can maintain state proves isolation works
+        assert instance1.call_count == 2
+        assert instance2.call_count == 1
 
 
 class TestSignatureDetection:

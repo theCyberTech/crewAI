@@ -1,4 +1,5 @@
 import os
+import pickle
 import unittest
 import uuid
 
@@ -24,7 +25,8 @@ class TestPickleHandler(unittest.TestCase):
         self.handler.initialize_file()
 
         assert os.path.exists(self.file_path) is True
-        assert os.path.getsize(self.file_path) >= 0
+        with open(self.file_path, "rb") as file:
+            assert pickle.load(file) == {}  # noqa: S301
 
     def test_save_and_load(self):
         data = {"key": "value"}

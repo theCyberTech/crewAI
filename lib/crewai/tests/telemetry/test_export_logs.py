@@ -36,12 +36,13 @@ def test_pipeline_is_silent_when_collector_rejects(live_telemetry, caplog):
         patch(
             "requests.Session.post",
             side_effect=requests.exceptions.HTTPError("400 Client Error"),
-        ),
+        ) as post,
         caplog.at_level(logging.DEBUG),
     ):
         live_telemetry.provider.get_tracer("test").start_span("probe").end()
         assert live_telemetry.provider.force_flush(timeout_millis=10_000)
 
+    assert post.call_args.kwargs["url"] == "https://telemetry.crewai.com:4319/v1/traces"
     otlp_records = [r for r in caplog.records if r.name == OTLPSpanExporter.__module__]
     assert otlp_records == []
 

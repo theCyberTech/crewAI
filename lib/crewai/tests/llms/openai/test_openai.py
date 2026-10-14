@@ -350,9 +350,13 @@ def test_multiple_openai_calls_in_crew():
     """
     openai_llm = LLM(model="openai/gpt-4o")
 
-    with patch.object(openai_llm, 'call') as mock_call:
-        mock_call.return_value = "Task completed."
+    prompts: list[str] = []
 
+    def record_prompt(messages, *args, **kwargs):
+        prompts.append(messages[-1]["content"])
+        return "Task completed."
+
+    with patch.object(openai_llm, 'call', side_effect=record_prompt) as mock_call:
         agent = Agent(
             role="Multi-task Agent",
             goal="Complete multiple tasks",
@@ -378,12 +382,10 @@ def test_multiple_openai_calls_in_crew():
         )
         crew.kickoff()
 
-        assert mock_call.call_count >= 2  # At least one call per task
-
-        for call in mock_call.call_args_list:
-            assert len(call[0]) > 0
-            messages = call[0][0]
-            assert messages is not None
+        assert mock_call.call_count == 2
+        assert "Current Task: First task" in prompts[0]
+        assert "Current Task: Second task" in prompts[1]
+        assert "This is the context you're working with:\nTask completed." in prompts[1]
 
 
 def test_openai_completion_with_tools():
@@ -419,14 +421,10 @@ def test_openai_completion_with_tools():
         crew = Crew(agents=[agent], tasks=[task])
         crew.kickoff()
 
-        assert mock_call.called
-
-        call_args = mock_call.call_args
-        call_kwargs = call_args[1] if len(call_args) > 1 else {}
-
-        if 'tools' in call_kwargs:
-            assert call_kwargs['tools'] is not None
-            assert len(call_kwargs['tools']) > 0
+        mock_call.assert_called_once()
+        assert [
+            t["function"]["name"] for t in mock_call.call_args.kwargs["tools"]
+        ] == ["sample_tool"]
 
 @pytest.mark.vcr()
 def test_openai_completion_call_returns_usage_metrics():
@@ -737,8 +735,7 @@ def test_openai_response_format_none():
     llm = LLM(model="gpt-4o", response_format=None)
     result = llm.call("Say hello in one word")
 
-    assert isinstance(result, str)
-    assert len(result) > 0
+    assert result == "Hello!"
 
 
 @pytest.mark.vcr()
@@ -1180,9 +1177,9 @@ def test_openai_responses_api_returns_usage_metrics():
     llm.call("Say hello")
 
     usage = llm.get_token_usage_summary()
-    assert usage.total_tokens > 0
-    assert usage.prompt_tokens > 0
-    assert usage.completion_tokens > 0
+    assert usage.total_tokens == 19
+    assert usage.prompt_tokens == 9
+    assert usage.completion_tokens == 10
 
 
 def test_openai_responses_api_builtin_tools_param():
@@ -1240,8 +1237,9 @@ def test_openai_responses_api_with_web_search():
 
     result = llm.call("What is the current population of Tokyo? Be brief.")
 
-    assert isinstance(result, str)
-    assert len(result) > 0
+    assert result.startswith(
+        "As of 2025, Tokyo's population is approximately 14.2 million."
+    )
 
 
 def test_responses_api_result_dataclass():
@@ -1269,13 +1267,13 @@ def test_responses_api_result_has_tool_outputs():
         text="Test",
         web_search_results=[{"id": "ws_1", "status": "completed", "type": "web_search_call"}],
     )
-    assert result_with_web.has_tool_outputs()
+    assert result_with_web.has_tool_outputs() is True
 
     result_with_file = ResponsesAPIResult(
         text="Test",
         file_search_results=[{"id": "fs_1", "status": "completed", "type": "file_search_call", "queries": [], "results": []}],
     )
-    assert result_with_file.has_tool_outputs()
+    assert result_with_file.has_tool_outputs() is True
 
 
 def test_responses_api_result_has_reasoning():
@@ -1284,10 +1282,10 @@ def test_responses_api_result_has_reasoning():
         text="Test",
         reasoning_summaries=[{"id": "r_1", "type": "reasoning", "summary": []}],
     )
-    assert result_with_reasoning.has_reasoning()
+    assert result_with_reasoning.has_reasoning() is True
 
     result_without = ResponsesAPIResult(text="Test")
-    assert not result_without.has_reasoning()
+    assert result_without.has_reasoning() is False
 
 
 def test_openai_responses_api_parse_tool_outputs_param():
@@ -1324,11 +1322,14 @@ def test_openai_responses_api_with_parse_tool_outputs():
     result = llm.call("What is the current population of Tokyo? Be very brief.")
 
     assert isinstance(result, ResponsesAPIResult)
-    assert len(result.text) > 0
-    assert result.response_id is not None
-    # Web search should have been used
-    assert len(result.web_search_results) > 0
-    assert result.has_tool_outputs()
+    assert result.text.startswith(
+        "As of 2025, Tokyo's metropolitan area has a population of approximately 37 million people."
+    )
+    assert result.response_id == "resp_032afd4ddbab8993006973114dd1b4819691b5d7306c6ca5c6"
+    assert [ws["id"] for ws in result.web_search_results] == [
+        "ws_032afd4ddbab8993006973114e536c819690ebb3728000ec00"
+    ]
+    assert result.has_tool_outputs() is True
 
 
 @pytest.mark.vcr()
@@ -1343,10 +1344,9 @@ def test_openai_responses_api_parse_tool_outputs_basic_call():
     result = llm.call("Say hello in exactly 3 words.")
 
     assert isinstance(result, ResponsesAPIResult)
-    assert len(result.text) > 0
-    assert result.response_id is not None
-    # No built-in tools used
-    assert not result.has_tool_outputs()
+    assert result.text == "Hello there, friend!"
+    assert result.response_id == "resp_004fa988af496dce0069731150cad081979659131a7fe57fb4"
+    assert result.has_tool_outputs() is False
 
 
 # Auto-Chaining Tests (Responses API)
@@ -1464,19 +1464,19 @@ def test_openai_responses_api_auto_chain_integration():
     assert llm.last_response_id is None
     result1 = llm.call("My name is Alice. Remember this.")
 
-    # After first call, should have a response ID
-    assert llm.last_response_id is not None
-    first_response_id = llm.last_response_id
-    assert first_response_id.startswith("resp_")
+    assert llm.last_response_id == "resp_0941b08f06efed9e00697312fcce9c819080f2ec731d0d34ed"
+    params = llm._prepare_responses_params(
+        messages=[{"role": "user", "content": "What is my name?"}]
+    )
+    assert params["previous_response_id"] == (
+        "resp_0941b08f06efed9e00697312fcce9c819080f2ec731d0d34ed"
+    )
 
     result2 = llm.call("What is my name?")
 
-    # Response ID should be updated
-    assert llm.last_response_id is not None
-    assert llm.last_response_id != first_response_id
-
-    assert isinstance(result1, str)
-    assert isinstance(result2, str)
+    assert llm.last_response_id == "resp_0941b08f06efed9e00697312fdc3b88190b48287f703659623"
+    assert result1 == "Got it, Alice! How can I assist you today?"
+    assert result2 == "Your name is Alice. How can I help you today?"
 
 
 @pytest.mark.vcr()
@@ -1489,16 +1489,17 @@ def test_openai_responses_api_auto_chain_with_reset():
     )
 
     llm.call("My favorite color is blue.")
-    first_chain_id = llm.last_response_id
-    assert first_chain_id is not None
+    assert llm.last_response_id == "resp_0694f37e374b8ed200697312febfa48190bd8aefeb776f98ab"
 
     llm.reset_chain()
     assert llm.last_response_id is None
+    params = llm._prepare_responses_params(
+        messages=[{"role": "user", "content": "Hello!"}]
+    )
+    assert "previous_response_id" not in params
 
     llm.call("Hello!")
-    second_chain_id = llm.last_response_id
-    assert second_chain_id is not None
-    assert second_chain_id != first_chain_id
+    assert llm.last_response_id == "resp_0858c6d9a191c7aa00697312ffc09881979333f4c1fd7fb3e7"
 
 
 # Encrypted Reasoning for ZDR (Zero Data Retention) Tests
@@ -1713,11 +1714,12 @@ def test_openai_agent_kickoff_structured_output_without_tools():
         response_format=AnalysisResult,
     )
 
-    assert result.pydantic is not None, "Expected pydantic output but got None"
     assert isinstance(result.pydantic, AnalysisResult), f"Expected AnalysisResult but got {type(result.pydantic)}"
-    assert result.pydantic.topic, "Topic should not be empty"
-    assert len(result.pydantic.key_points) > 0, "Should have at least one key point"
-    assert result.pydantic.summary, "Summary should not be empty"
+    assert result.pydantic.topic == "Benefits of Remote Work"
+    assert len(result.pydantic.key_points) == 5
+    assert result.pydantic.summary.startswith(
+        "Remote work offers significant advantages, including"
+    )
 
 
 @pytest.mark.vcr()

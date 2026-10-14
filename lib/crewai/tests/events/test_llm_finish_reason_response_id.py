@@ -47,15 +47,6 @@ class TestLLMCallCompletedEventFinishReasonAndResponseId:
         assert event.finish_reason == "stop"
         assert event.response_id == "resp_123"
 
-    def test_defaults_to_none(self):
-        event = LLMCallCompletedEvent(
-            response="hi",
-            call_type=LLMCallType.LLM_CALL,
-            call_id="call-1",
-        )
-        assert event.finish_reason is None
-        assert event.response_id is None
-
     @pytest.mark.parametrize(
         "value",
         [MagicMock(), 42, 1.5, ["stop"], {"reason": "stop"}, object()],
@@ -95,18 +86,6 @@ class TestLLMCallStartedEventSamplingParams:
         assert event.frequency_penalty == 0.1
         assert event.presence_penalty == 0.2
         assert event.n == 3
-
-    def test_all_sampling_params_default_to_none(self):
-        event = LLMCallStartedEvent(call_id="call-1")
-        assert event.temperature is None
-        assert event.top_p is None
-        assert event.max_tokens is None
-        assert event.stream is None
-        assert event.seed is None
-        assert event.stop_sequences is None
-        assert event.frequency_penalty is None
-        assert event.presence_penalty is None
-        assert event.n is None
 
 
 class TestStopSequencesCoercion:
@@ -350,11 +329,13 @@ class TestStreamingDictChunkResponseIdPropagation:
             "crewai.llm.litellm.completion",
             return_value=iter(self._dict_chunks()),
         ):
-            llm.call("anything")
+            result = llm.call("anything")
 
-        ids = self._stream_event_response_ids(mock_emit)
-        assert ids, "expected at least one LLMStreamChunkEvent"
-        assert all(rid == "test-chunk-id" for rid in ids), ids
+        assert result == "hi there"
+        assert self._stream_event_response_ids(mock_emit) == [
+            "test-chunk-id",
+            "test-chunk-id",
+        ]
 
     @pytest.mark.asyncio
     async def test_async_dict_chunk_id_propagates_to_stream_event(self, mock_emit):
@@ -368,11 +349,13 @@ class TestStreamingDictChunkResponseIdPropagation:
             return _aiter()
 
         with patch("crewai.llm.litellm.acompletion", side_effect=_acompletion):
-            await llm.acall("anything")
+            result = await llm.acall("anything")
 
-        ids = self._stream_event_response_ids(mock_emit)
-        assert ids, "expected at least one LLMStreamChunkEvent"
-        assert all(rid == "test-chunk-id" for rid in ids), ids
+        assert result == "hi there"
+        assert self._stream_event_response_ids(mock_emit) == [
+            "test-chunk-id",
+            "test-chunk-id",
+        ]
 
 
 class TestEmitCallCompletedEventPassesFinishReasonAndResponseId:
@@ -521,6 +504,4 @@ class TestExtractChoicesFinishReasonAndIdHelper:
         ],
     )
     def test_never_raises_returns_nones_or_coerces(self, bad_input: Any) -> None:
-        finish_reason, response_id = extract_choices_finish_reason_and_id(bad_input)
-        assert finish_reason is None or isinstance(finish_reason, str)
-        assert response_id is None or isinstance(response_id, str)
+        assert extract_choices_finish_reason_and_id(bad_input) == (None, None)

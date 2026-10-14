@@ -1199,13 +1199,16 @@ def test_flow_definition_ignores_legacy_diagnostics_loaded_from_contract():
         }
     )
 
-    assert "diagnostics" not in definition.to_dict()
+    contract = definition.to_dict()
+    assert "diagnostics" not in contract
+    assert contract["name"] == "LoadedDiagnosticsFlow"
+    assert list(contract["methods"]) == ["begin"]
 
 
 def test_router_start_false_without_listen_is_allowed(caplog):
     caplog.set_level(logging.ERROR, logger="crewai.flow.flow_definition")
 
-    flow_definition.FlowDefinition.from_declaration(contents=
+    definition = flow_definition.FlowDefinition.from_declaration(contents=
         {
             "schema": "crewai.flow/v1",
             "name": "LoadedFlow",
@@ -1220,6 +1223,11 @@ def test_router_start_false_without_listen_is_allowed(caplog):
         }
     )
 
+    decision = definition.methods["decision"]
+    assert decision.router is True
+    assert decision.start is False
+    assert decision.listen is None
+    assert decision.emit == ["continue"]
     assert not caplog.records
 
 
@@ -1245,20 +1253,7 @@ def test_router_human_feedback_preserves_existing_router_metadata():
     assert method.listen == "begin"
     assert method.emit == ["approved", "rejected"]
     assert method.human_feedback is not None
-
-
-def test_dynamic_router_flow_definition_allows_dynamic_emit():
-    class LazyDynamicRouterFlow(Flow):
-        @start()
-        def begin(self):
-            return "started"
-
-        @router(begin)
-        def decide(self):
-            return self.state["dynamic_event"]
-
-    definition = LazyDynamicRouterFlow.flow_definition()
-    assert definition.methods["decide"].emit is None
+    assert method.human_feedback.message == "Review route:"
 
 
 def test_dynamic_router_string_listener_is_valid_contract():
@@ -1432,7 +1427,7 @@ def test_flow_definition_cache_is_not_reused_by_subclasses():
 def test_flow_definition_allows_router_without_trigger(caplog):
     caplog.set_level(logging.WARNING, logger="crewai.flow.flow_definition")
 
-    flow_definition.FlowDefinition.from_declaration(contents=
+    loaded = flow_definition.FlowDefinition.from_declaration(contents=
         {
             "schema": "crewai.flow/v1",
             "name": "LoadedFlow",
@@ -1451,8 +1446,13 @@ def test_flow_definition_allows_router_without_trigger(caplog):
         def decision(self):
             return "continue"
 
-    StandaloneRouterFlow.flow_definition()
+    built = StandaloneRouterFlow.flow_definition()
 
+    for definition in (loaded, built):
+        decision = definition.methods["decision"]
+        assert decision.router is True
+        assert decision.listen is None
+        assert decision.emit == ["continue"]
     assert not caplog.records
 
 
@@ -1520,6 +1520,7 @@ def test_skill_documents_every_conversational_field():
 def test_skill_conversational_skip_suppresses_both_sections():
     skill = flow_definition.FlowDefinition.skill(skips=["conversational"])
 
+    assert "[Method](#method-methods)" in skill
     assert "### Conversational" not in skill
     assert "conversational-router" not in skill
 

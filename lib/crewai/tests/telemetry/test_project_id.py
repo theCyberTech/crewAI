@@ -37,6 +37,13 @@ def test_returns_none_when_no_id_configured(pyproject):
     assert get_project_id(pyproject) is None
 
 
+def test_returns_the_configured_id(tmp_path):
+    path = tmp_path / "pyproject.toml"
+    path.write_text('[tool.crewai]\ntype = "crew"\nproject_id = "proj-123"\n')
+
+    assert get_project_id(path) == "proj-123"
+
+
 def test_mints_and_persists_an_id(pyproject):
     project_id = get_or_create_project_id(pyproject)
 
@@ -154,6 +161,7 @@ def test_read_only_file_is_not_an_error(pyproject):
         pyproject.chmod(0o644)
 
     assert project_id is None
+    assert pyproject.read_text() == CREW_PYPROJECT
 
 
 def test_get_project_id_never_creates_anything(pyproject):
@@ -266,9 +274,11 @@ def test_lf_file_stays_lf(tmp_path):
     path = tmp_path / "pyproject.toml"
     path.write_bytes(b'[tool.crewai]\ntype = "crew"\n')
 
-    get_or_create_project_id(path)
+    project_id = get_or_create_project_id(path)
 
-    assert b"\r\n" not in path.read_bytes()
+    assert path.read_bytes() == (
+        f'[tool.crewai]\ntype = "crew"\nproject_id = "{project_id}"\n'.encode()
+    )
 
 
 def test_concurrent_minting_converges_on_one_id(tmp_path):

@@ -278,11 +278,13 @@ def test_node_metadata_omits_source_info():
     flow = SimpleFlow()
     structure = build_flow_structure(flow)
 
-    for node_metadata in structure["nodes"].values():
-        assert "source_code" not in node_metadata
-        assert "source_lines" not in node_metadata
-        assert "source_start_line" not in node_metadata
-        assert "source_file" not in node_metadata
+    assert structure["nodes"]["process"] == {
+        "type": "listen",
+        "class_name": "SimpleFlow",
+        "trigger_condition_type": "OR",
+        "condition_type": "OR",
+        "trigger_methods": ["begin"],
+    }
 
 
 def test_node_metadata_omits_method_signature():
@@ -290,8 +292,7 @@ def test_node_metadata_omits_method_signature():
     flow = SimpleFlow()
     structure = build_flow_structure(flow)
 
-    begin_node = structure["nodes"]["begin"]
-    assert "method_signature" not in begin_node
+    assert structure["nodes"]["begin"] == {"type": "start", "class_name": "SimpleFlow"}
 
 
 def test_router_node_has_correct_metadata():
@@ -359,10 +360,12 @@ def test_empty_flow_structure():
     flow = EmptyFlow()
 
     structure = build_flow_structure(flow)
-    assert structure is not None
-    assert len(structure["nodes"]) == 0
-    assert len(structure["edges"]) == 0
-    assert len(structure["start_methods"]) == 0
+    assert structure == {
+        "nodes": {},
+        "edges": [],
+        "start_methods": [],
+        "router_methods": [],
+    }
 
 
 def test_topological_path_counting():
@@ -370,8 +373,13 @@ def test_topological_path_counting():
     flow = ComplexFlow()
     structure = build_flow_structure(flow)
 
-    assert len(structure["nodes"]) > 0
-    assert len(structure["edges"]) > 0
+    assert structure["edges"] == [
+        {"source": "start_a", "target": "converge_and", "condition_type": "AND", "is_router_event": False},
+        {"source": "start_b", "target": "converge_and", "condition_type": "AND", "is_router_event": False},
+        {"source": "start_a", "target": "converge_or", "condition_type": "OR", "is_router_event": False},
+        {"source": "start_b", "target": "converge_or", "condition_type": "OR", "is_router_event": False},
+        {"source": "converge_and", "target": "router_decision", "condition_type": "OR", "is_router_event": False},
+    ]
 
 
 def test_class_metadata_comes_from_declaration():
@@ -391,7 +399,12 @@ def test_visualization_plot_method():
 
     html_file = flow.plot("test_plot.html", show=False)
 
-    assert os.path.exists(html_file)
+    html_path = Path(html_file)
+    assert html_path.name == "test_plot.html"
+    assert "CrewAI Flow Visualization" in html_path.read_text(encoding="utf-8")
+    js_content = (html_path.parent / "test_plot_script.js").read_text(encoding="utf-8")
+    assert "begin" in js_content
+    assert "process" in js_content
 
 
 def test_router_events_to_string_conditions():
@@ -675,15 +688,21 @@ def test_warning_for_router_without_events(caplog):
     with caplog.at_level(logging.WARNING):
         build_flow_structure(flow)
 
-    assert any(
-        "Router events for 'dynamic_router' are dynamic" in record.message
+    warnings = [
+        record.getMessage()
         for record in caplog.records
+        if record.name == "crewai.flow.visualization.builder"
+    ]
+    assert len(warnings) == 2
+    assert warnings[0] == (
+        "Router events for 'dynamic_router' are dynamic or not statically "
+        "inferable; static visualization may omit event edges."
     )
-
-    assert any(
-        "Static visualization could not match listener triggers" in record.message
-        for record in caplog.records
+    assert warnings[1].startswith(
+        "Static visualization could not match listener triggers {"
     )
+    assert "'event_a'" in warnings[1]
+    assert "'event_b'" in warnings[1]
     assert not any(record.levelno >= logging.ERROR for record in caplog.records)
 
 
@@ -729,11 +748,16 @@ def test_warning_for_orphaned_listeners(caplog):
     with caplog.at_level(logging.WARNING):
         build_flow_structure(flow)
 
-    assert any(
-        "Static visualization could not match listener triggers" in record.message
-        and "option_c" in record.message
+    warnings = [
+        record.getMessage()
         for record in caplog.records
-    )
+        if record.name == "crewai.flow.visualization.builder"
+    ]
+    assert warnings == [
+        "Static visualization could not match listener triggers {'option_c'} to "
+        "explicit router events. Dynamic router values may still trigger these "
+        "listeners at runtime."
+    ]
     assert not any(record.levelno >= logging.ERROR for record in caplog.records)
 
 
@@ -777,12 +801,11 @@ def test_no_warning_for_explicit_contract_router_events(caplog):
     )
 
     with caplog.at_level(logging.WARNING):
-        build_flow_structure(flow)
+        structure = build_flow_structure(flow)
 
-    # No warnings should be logged
-    warning_messages = [r.message for r in caplog.records if r.levelno >= logging.WARNING]
-    assert not any("Router events for" in msg for msg in warning_messages)
-    assert not any(
-        "Static visualization could not match listener triggers" in msg
-        for msg in warning_messages
-    )
+    assert structure["nodes"]["typed_router"]["router_events"] == ["event_a", "event_b"]
+    assert [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "crewai.flow.visualization.builder"
+    ] == []

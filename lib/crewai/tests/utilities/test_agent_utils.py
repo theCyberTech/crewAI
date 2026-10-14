@@ -167,10 +167,7 @@ class TestConvertToolsToOpenaiSchema:
 
     def test_empty_tools_list(self) -> None:
         """Test with an empty tools list."""
-        schemas, functions, _ = convert_tools_to_openai_schema([])
-
-        assert schemas == []
-        assert functions == {}
+        assert convert_tools_to_openai_schema([]) == ([], {}, {})
 
     def test_schema_has_required_fields(self) -> None:
         """Test that the schema includes required fields information."""
@@ -195,36 +192,50 @@ class TestConvertToolsToOpenaiSchema:
         tools = [MinimalTool()]
         schemas, functions, _ = convert_tools_to_openai_schema(tools)
 
-        assert len(schemas) == 1
-        schema = schemas[0]
-        assert schema["function"]["name"] == "minimal"
-        # Parameters should be empty dict or have minimal schema
-        assert isinstance(schema["function"]["parameters"], dict)
+        assert schemas == [
+            {
+                "type": "function",
+                "function": {
+                    "name": "minimal",
+                    "description": "A minimal tool",
+                    "parameters": {
+                        "properties": {},
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": [],
+                    },
+                    "strict": True,
+                },
+            }
+        ]
 
     def test_schema_structure_matches_openai_format(self) -> None:
         """Test that the schema structure matches OpenAI's expected format."""
         tools = [CalculatorTool()]
         schemas, functions, _ = convert_tools_to_openai_schema(tools)
 
-        schema = schemas[0]
-
-        # Top level must have "type": "function"
-        assert schema["type"] == "function"
-
-        # Must have "function" key with nested structure
-        assert "function" in schema
-        func = schema["function"]
-
-        # Function must have name and description
-        assert "name" in func
-        assert "description" in func
-        assert isinstance(func["name"], str)
-        assert isinstance(func["description"], str)
-
-        # Parameters should be a valid JSON schema
-        assert "parameters" in func
-        params = func["parameters"]
-        assert isinstance(params, dict)
+        assert schemas == [
+            {
+                "type": "function",
+                "function": {
+                    "name": "calculator",
+                    "description": "Perform mathematical calculations",
+                    "parameters": {
+                        "properties": {
+                            "expression": {
+                                "description": "Mathematical expression to evaluate",
+                                "title": "Expression",
+                                "type": "string",
+                            }
+                        },
+                        "required": ["expression"],
+                        "type": "object",
+                        "additionalProperties": False,
+                    },
+                    "strict": True,
+                },
+            }
+        ]
 
     def test_removes_redundant_schema_fields(self) -> None:
         """Test that redundant title and description are removed from parameters."""
@@ -233,7 +244,7 @@ class TestConvertToolsToOpenaiSchema:
 
         params = schemas[0]["function"]["parameters"]
         # Title should be removed as it's redundant with function name
-        assert "title" not in params
+        assert set(params) == {"properties", "required", "type", "additionalProperties"}
 
     def test_preserves_field_descriptions(self) -> None:
         """Test that field descriptions are preserved in the schema."""
@@ -842,10 +853,13 @@ class TestMessagesReadyToChunk:
             }
         ]
         ready = _messages_ready_to_chunk(messages, max_tokens=100)
-        assert len(ready) > 1
-        assert all(part["role"] == "tool" for part in ready)
-        assert all(part["name"] == "fetch_page" for part in ready)
-        assert all(part["tool_call_id"] == "call_123" for part in ready)
+        assert [
+            {key: value for key, value in part.items() if key != "content"}
+            for part in ready
+        ] == [{"role": "tool", "name": "fetch_page", "tool_call_id": "call_123"}] * 4
+        headers, bodies = zip(*(part["content"].split("\n", 1) for part in ready))
+        assert headers == ("[Part 1/4]", "[Part 2/4]", "[Part 3/4]", "[Part 4/4]")
+        assert "".join(bodies) == "Z" * 1200
 
     def test_preserves_non_content_fields(self) -> None:
         mock_file = MagicMock()
@@ -857,8 +871,11 @@ class TestMessagesReadyToChunk:
             }
         ]
         ready = _messages_ready_to_chunk(messages, max_tokens=100)
-        assert len(ready) > 1
-        assert all(part["files"] == {"report.pdf": mock_file} for part in ready)
+        assert [
+            {key: value for key, value in part.items() if key != "content"}
+            for part in ready
+        ] == [{"role": "user", "files": {"report.pdf": mock_file}}] * 4
+        assert "".join(part["content"].split("\n", 1)[1] for part in ready) == "X" * 1200
 
     def test_excludes_system_messages(self) -> None:
         messages: list[dict[str, Any]] = [
@@ -899,9 +916,7 @@ class TestEstimateTokenCount:
     def test_approximation_is_conservative(self) -> None:
         # For English text, actual token count is typically lower than char/4
         text = "The quick brown fox jumps over the lazy dog."
-        estimated = _approx_tokens(text)
-        assert estimated > 0
-        assert estimated == len(text) // 4
+        assert _approx_tokens(text) == 11
 
 
 class TestParallelSummarization:
@@ -965,6 +980,10 @@ class TestParallelSummarization:
         )
 
         mock_llm.acall.assert_awaited_once()
+        request = mock_llm.acall.await_args.args[0]
+        assert "[USER]: Short message\n\n[ASSISTANT]: Short reply" in request[1]["content"]
+        assert [message["role"] for message in messages] == ["user"]
+        assert messages[0]["content"].startswith("<summary>\nShort summary\n</summary>")
 
     def test_parallel_results_preserve_order(self) -> None:
         """Summaries must appear in the same order as the original chunks,
@@ -1226,7 +1245,9 @@ class TestParallelSummarizationVCR:
         # Summary produced as a user message
         summary_msg = messages[-1]
         assert summary_msg["role"] == "user"
-        assert len(summary_msg["content"]) > 0
+        assert "history of the Python programming language" in summary_msg["content"]
+        assert "async/await features in Python" in summary_msg["content"]
+        assert "how pip works" in summary_msg["content"]
 
     @pytest.mark.vcr()
     def test_parallel_summarize_preserves_files(self) -> None:
@@ -1301,15 +1322,6 @@ class TestExtractToolCallInfoResponsesApiShape:
         assert func_name == "fetch_page"
         assert func_args == '{"url": "https://example.com"}'
 
-    def test_responses_api_dict_does_not_return_empty_args(self) -> None:
-        tool_call = {
-            "id": "call_xyz",
-            "name": "fetch_page",
-            "arguments": '{"url": "https://example.com"}',
-        }
-        _, _, func_args = extract_tool_call_info(tool_call)
-        assert func_args != {}
-
     def test_bedrock_anthropic_style_still_uses_input(self) -> None:
         tool_call = {"name": "fetch_page", "input": {"url": "https://example.com"}}
         _, func_name, func_args = extract_tool_call_info(tool_call)
@@ -1329,9 +1341,8 @@ class TestExtractToolCallInfoResponsesApiShape:
         assert extract_tool_call_info("just a string") is None
 
     def test_unrecognized_dict_shape_returns_empty_name_and_args(self) -> None:
-        call_id, func_name, func_args = extract_tool_call_info({"unrelated": "data"})
-        assert func_name == ""
-        assert func_args == {}
+        tool_call = {"unrelated": "data"}
+        assert extract_tool_call_info(tool_call) == (f"call_{id(tool_call)}", "", {})
 
 
 class TestParseToolCallArgs:

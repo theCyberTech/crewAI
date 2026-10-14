@@ -452,7 +452,9 @@ def test_grant_preserves_optional_viewer_url_without_exposing_it_in_repr(
 )
 def test_unusable_optional_viewer_url_does_not_break_grant(collector, value):
     collector.grant_override = {"trace_url": value}
-    assert TraceGrantClient("pat").create(str(uuid4())).trace_url is None
+    grant = TraceGrantClient("pat").create(str(uuid4()))
+    assert grant.token == "grant-1"
+    assert grant.trace_url is None
 
 
 @pytest.mark.parametrize(

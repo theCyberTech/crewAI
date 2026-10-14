@@ -87,6 +87,7 @@ class TestNoToolsPromptGeneration:
         result = prompts.task_execution()
 
         assert "Thought:" in result["user"]
+        assert "your job depends on it" in result["user"]
 
     def test_native_tools_uses_native_task_slice(self) -> None:
         """Test that native tool calling uses native_task slice."""
@@ -104,6 +105,7 @@ class TestNoToolsPromptGeneration:
 
         result = prompts.task_execution()
 
+        assert result["user"] == "\nCurrent Task: {input}"
         # Native tool calling should NOT have Thought: in user prompt
         assert "Thought:" not in result["user"]
 
@@ -177,18 +179,7 @@ class TestRealLLMNoThoughtLeakage:
         crew = Crew(agents=[agent], tasks=[task])
         result = crew.kickoff()
 
-        assert result is not None
-        assert result.raw is not None
-
-        output = str(result.raw)
-        assert not output.strip().startswith("Thought:")
-        assert "Final Answer:" not in output
-        assert "I now can give a great answer" not in output
-
-        assert any(
-            lang in output.lower()
-            for lang in ["english", "en", "language"]
-        )
+        assert result.raw == "English"
 
     @pytest.mark.vcr()
     def test_simple_task_clean_output(self) -> None:
@@ -211,13 +202,4 @@ class TestRealLLMNoThoughtLeakage:
         crew = Crew(agents=[agent], tasks=[task])
         result = crew.kickoff()
 
-        assert result is not None
-        output = str(result.raw).strip().lower()
-
-        assert not output.startswith("thought:")
-        assert "final answer:" not in output
-
-        assert any(
-            sentiment in output
-            for sentiment in ["positive", "negative", "neutral"]
-        )
+        assert result.raw == "positive"

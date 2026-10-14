@@ -276,8 +276,11 @@ class TestOpenAINativeToolCalling:
             crew = Crew(agents=[agent], tasks=[task])
             result = crew.kickoff()
 
-            assert mock_call.called
-            assert result is not None
+            mock_call.assert_called_once()
+            assert [
+                t["function"]["name"] for t in mock_call.call_args.kwargs["tools"]
+            ] == ["calculator"]
+            assert result.raw == "The answer is 120."
 
     @pytest.mark.vcr()
     @pytest.mark.timeout(180)
@@ -485,8 +488,7 @@ class TestAnthropicNativeToolCalling:
         crew = Crew(agents=[agent], tasks=[task])
         result = crew.kickoff()
 
-        assert result is not None
-        assert result.raw is not None
+        assert result.raw == "120"
 
     def test_anthropic_agent_kickoff_with_tools_mocked(
         self, calculator_tool: CalculatorTool
@@ -513,8 +515,11 @@ class TestAnthropicNativeToolCalling:
             crew = Crew(agents=[agent], tasks=[task])
             result = crew.kickoff()
 
-            assert mock_call.called
-            assert result is not None
+            mock_call.assert_called_once()
+            assert [
+                t["function"]["name"] for t in mock_call.call_args.kwargs["tools"]
+            ] == ["calculator"]
+            assert result.raw == "The answer is 120."
 
     @pytest.mark.vcr()
     def test_anthropic_parallel_native_tool_calling_test_crew(
@@ -596,8 +601,7 @@ class TestGeminiNativeToolCalling:
         crew = Crew(agents=[agent], tasks=[task])
         result = crew.kickoff()
 
-        assert result is not None
-        assert result.raw is not None
+        assert result.raw == "The result of 15 * 8 is 120"
 
     def test_gemini_agent_kickoff_with_tools_mocked(
         self, calculator_tool: CalculatorTool
@@ -624,8 +628,11 @@ class TestGeminiNativeToolCalling:
             crew = Crew(agents=[agent], tasks=[task])
             result = crew.kickoff()
 
-            assert mock_call.called
-            assert result is not None
+            mock_call.assert_called_once()
+            assert [
+                t["function"]["name"] for t in mock_call.call_args.kwargs["tools"]
+            ] == ["calculator"]
+            assert result.raw == "The answer is 120."
 
     @pytest.mark.vcr()
     def test_gemini_parallel_native_tool_calling_test_crew(
@@ -745,8 +752,11 @@ class TestAzureNativeToolCalling:
             crew = Crew(agents=[agent], tasks=[task])
             result = crew.kickoff()
 
-            assert mock_call.called
-            assert result is not None
+            mock_call.assert_called_once()
+            assert [
+                t["function"]["name"] for t in mock_call.call_args.kwargs["tools"]
+            ] == ["calculator"]
+            assert result.raw == "The answer is 120."
 
     @pytest.mark.vcr()
     def test_azure_parallel_native_tool_calling_test_crew(

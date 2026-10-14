@@ -1084,9 +1084,12 @@ class TestAgentExecutorBackwardCompat:
 
         executor._save_to_memory(AgentFinish(thought="", output="R", text="R"))
 
-        mock_memory.remember_many.assert_called_once()
-        call_kwargs = mock_memory.remember_many.call_args.kwargs
-        assert "root_scope" not in call_kwargs
+        mock_memory.extract_memories.assert_called_once_with(
+            "Task: Task\nAgent: Researcher\nExpected result: Output\nResult: R"
+        )
+        mock_memory.remember_many.assert_called_once_with(
+            ["Fact A"], agent_role="Researcher"
+        )
 
     def test_agent_executor_extends_root_scope_when_memory_has_one(self) -> None:
         """Agent executor extends root_scope when memory has one."""
@@ -1115,9 +1118,11 @@ class TestAgentExecutorBackwardCompat:
 
         executor._save_to_memory(AgentFinish(thought="", output="R", text="R"))
 
-        mock_memory.remember_many.assert_called_once()
-        call_kwargs = mock_memory.remember_many.call_args.kwargs
-        assert call_kwargs["root_scope"] == "/crew/test/agent/researcher"
+        mock_memory.remember_many.assert_called_once_with(
+            ["Fact A"],
+            agent_role="Researcher",
+            root_scope="/crew/test/agent/researcher",
+        )
 
 
 class TestConsolidationIsolation:

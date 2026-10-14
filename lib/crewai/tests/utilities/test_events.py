@@ -1364,11 +1364,10 @@ def test_llm_completed_event_includes_usage():
     assert success, "Timeout waiting for LLMCallCompletedEvent"
 
     event = completed_events[0]
-    assert event.usage is not None
-    assert isinstance(event.usage, dict)
-    assert event.usage.get("prompt_tokens", 0) > 0
-    assert event.usage.get("completion_tokens", 0) > 0
-    assert event.usage.get("total_tokens", 0) > 0
+    assert event.response == "Hello! How can I assist you today?"
+    assert event.usage["prompt_tokens"] == 9
+    assert event.usage["completion_tokens"] == 9
+    assert event.usage["total_tokens"] == 18
 
 
 def test_llm_emits_call_failed_event():
@@ -1418,9 +1417,11 @@ def test_llm_emits_stream_chunk_events():
 
     assert event_received.wait(timeout=5), "Timeout waiting for stream chunks"
 
-    assert len(received_chunks) > 0
-
     assert "".join(received_chunks) == response
+    assert (
+        response
+        == "Why couldn't the bicycle stand up by itself? Because it was two-tired!"
+    )
 
 
 @pytest.mark.vcr()
@@ -1436,9 +1437,9 @@ def test_llm_no_stream_chunks_when_streaming_disabled():
 
     response = llm.call("Tell me a short joke")
 
-    assert len(received_chunks) == 0
+    assert received_chunks == []
 
-    assert response and isinstance(response, str)
+    assert response == "Why don't skeletons fight each other?\n\nThey don't have the guts."
 
 
 @pytest.mark.vcr()

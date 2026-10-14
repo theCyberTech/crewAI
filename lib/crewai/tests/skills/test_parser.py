@@ -54,7 +54,7 @@ class TestParseFrontmatter:
     def test_triple_dash_in_body(self) -> None:
         content = "---\nname: test\ndescription: desc\n---\n\nBody with --- inside."
         fm, body = parse_frontmatter(content)
-        assert "---" in body
+        assert body == "Body with --- inside."
 
     def test_inline_triple_dash_in_yaml_value(self) -> None:
         content = '---\nname: test\ndescription: "Use---carefully"\n---\n\nBody.'
@@ -66,7 +66,7 @@ class TestParseFrontmatter:
         content = "---\nname: test\ndescription: Beschreibung\n---\n\nUnicode: \u00e4\u00f6\u00fc\u00df"
         fm, body = parse_frontmatter(content)
         assert fm["description"] == "Beschreibung"
-        assert "\u00e4\u00f6\u00fc\u00df" in body
+        assert body == "Unicode: \u00e4\u00f6\u00fc\u00df"
 
     def test_non_mapping_frontmatter(self) -> None:
         with pytest.raises(SkillParseError, match="must be a YAML mapping"):
@@ -158,11 +158,10 @@ class TestLoadSkillResources:
         full = load_skill_resources(skill)
         assert full.disclosure_level == RESOURCES
         assert full.instructions == "Body."
-        assert full.resource_files is not None
-        assert "scripts" in full.resource_files
-        assert "run.sh" in full.resource_files["scripts"]
-        assert "assets" in full.resource_files
-        assert "data.json" in full.resource_files["assets"]
+        assert full.resource_files == {
+            "scripts": ["run.sh"],
+            "assets": ["data.json"],
+        }
 
     def test_no_resource_dirs(self, tmp_path: Path) -> None:
         skill_dir = tmp_path / "my-skill"

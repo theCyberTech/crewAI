@@ -122,7 +122,7 @@ def test_crew_execution_span_in_flow_with_share_crew():
 
             result = crew.kickoff()
 
-            assert crew._execution_span is not None, (
+            assert crew._execution_span.name == "Crew Execution", (
                 "crew._execution_span should be set after kickoff even when "
                 "crew runs inside a flow method"
             )
@@ -133,7 +133,7 @@ def test_crew_execution_span_in_flow_with_share_crew():
     flow = SampleFlow()
     flow.kickoff()
 
-    assert flow.state.result != ""
+    assert flow.state.result == "Hello! This is a test response."
     mock_llm.call.assert_called()
 
 
@@ -178,7 +178,7 @@ def test_crew_execution_span_not_set_in_flow_without_share_crew():
     flow = SampleTestFlowNotSet()
     flow.kickoff()
 
-    assert flow.state.result != ""
+    assert flow.state.result == "Hello! This is a test response."
     mock_llm.call.assert_called()
 
 
@@ -217,7 +217,7 @@ def test_multiple_crews_in_flow_span_lifecycle():
 
             result = crew.kickoff()
 
-            assert crew._execution_span is not None
+            assert crew._execution_span.name == "Crew Execution"
             return str(result.raw)
 
         @listen(first_crew)
@@ -242,7 +242,7 @@ def test_multiple_crews_in_flow_span_lifecycle():
 
             result = crew.kickoff()
 
-            assert crew._execution_span is not None
+            assert crew._execution_span.name == "Crew Execution"
 
             self.state.result = f"{first_result} + {result.raw}"
             return self.state.result
@@ -250,8 +250,7 @@ def test_multiple_crews_in_flow_span_lifecycle():
     flow = SampleMultiCrewFlow()
     flow.kickoff()
 
-    assert flow.state.result != ""
-    assert "+" in flow.state.result
+    assert flow.state.result == "First crew result + Second crew result"
     mock_llm_1.call.assert_called()
     mock_llm_2.call.assert_called()
 
@@ -293,7 +292,7 @@ async def test_crew_execution_span_in_async_flow():
 
             result = crew.kickoff()
 
-            assert crew._execution_span is not None, (
+            assert crew._execution_span.name == "Crew Execution", (
                 "crew._execution_span should be set in async flow method"
             )
 
@@ -303,5 +302,5 @@ async def test_crew_execution_span_in_async_flow():
     flow = AsyncTestFlow()
     await flow.kickoff_async()
 
-    assert flow.state.result != ""
+    assert flow.state.result == "Hello! This is a test response."
     mock_llm.call.assert_called()

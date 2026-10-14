@@ -82,8 +82,9 @@ def unsupported_value_error() -> BadRequestError:
 
 class TestErrorDetection:
     def test_matches_the_tools_effort_400(self):
-        assert OpenAICompletion._rejects_reasoning_effort_with_tools(
-            tools_effort_error()
+        assert (
+            OpenAICompletion._rejects_reasoning_effort_with_tools(tools_effort_error())
+            is True
         )
 
     def test_matches_a_flat_error_body(self):
@@ -100,17 +101,21 @@ class TestErrorDetection:
             body=body,
         )
 
-        assert OpenAICompletion._rejects_reasoning_effort_with_tools(error)
+        assert OpenAICompletion._rejects_reasoning_effort_with_tools(error) is True
 
     def test_ignores_the_unsupported_value_400(self):
         """o1/o3 reject reasoning_effort="none", so retrying with it can't help."""
-        assert not OpenAICompletion._rejects_reasoning_effort_with_tools(
-            unsupported_value_error()
+        assert (
+            OpenAICompletion._rejects_reasoning_effort_with_tools(
+                unsupported_value_error()
+            )
+            is False
         )
 
     def test_ignores_unrelated_exceptions(self):
-        assert not OpenAICompletion._rejects_reasoning_effort_with_tools(
-            RuntimeError("boom")
+        assert (
+            OpenAICompletion._rejects_reasoning_effort_with_tools(RuntimeError("boom"))
+            is False
         )
 
 
@@ -119,14 +124,12 @@ class TestRetryParams:
         """Absence means "use the server default", which is what was rejected."""
         params = build()._reasoning_effort_none_params({"model": "gpt-5.6-sol"})
 
-        assert params is not None
-        assert params["reasoning_effort"] == "none"
+        assert params == {"model": "gpt-5.6-sol", "reasoning_effort": "none"}
 
     def test_overrides_a_requested_effort(self):
         params = build()._reasoning_effort_none_params({"reasoning_effort": "high"})
 
-        assert params is not None
-        assert params["reasoning_effort"] == "none"
+        assert params == {"reasoning_effort": "none"}
 
     def test_returns_none_when_already_none(self):
         """Nothing left to try -- the retry must not loop."""

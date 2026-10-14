@@ -172,33 +172,20 @@ __all__ = ['MyTool']
 
 
 @pytest.fixture
-def mock_crew():
-    from crewai.crew import Crew
-
-    class MockCrew(Crew):
-        def __init__(self):
-            pass
-
-    return MockCrew()
-
-
-@pytest.fixture
 def temp_crew_project():
     with tempfile.TemporaryDirectory() as temp_dir:
         old_cwd = os.getcwd()
         os.chdir(temp_dir)
 
         crew_content = """
-        from crewai.crew import Crew
-        from crewai.agent import Agent
+from crewai import Agent, Crew, Task
 
-        def create_crew() -> Crew:
-            agent = Agent(role="test", goal="test", backstory="test")
-            return Crew(agents=[agent], tasks=[])
-
-        # Direct crew instance
-        direct_crew = Crew(agents=[], tasks=[])
-        """
+agent = Agent(role="test", goal="test", backstory="test")
+direct_crew = Crew(
+    agents=[agent],
+    tasks=[Task(description="test task", expected_output="test", agent=agent)],
+)
+"""
 
         with open("crew.py", "w") as f:
             f.write(crew_content)
@@ -216,21 +203,17 @@ def temp_crew_project():
         os.chdir(old_cwd)
 
 
-def test_get_crews_finds_valid_crews(temp_crew_project, monkeypatch, mock_crew):
-    def mock_fetch_crews(module_attr):
-        return [mock_crew]
-
-    monkeypatch.setattr(utils, "fetch_crews", mock_fetch_crews)
-
+def test_get_crews_finds_valid_crews(temp_crew_project):
     crews = utils.get_crews()
 
-    assert len(crews) > 0
-    assert mock_crew in crews
+    assert len(crews) == 1
+    assert [agent.role for agent in crews[0].agents] == ["test"]
+    assert [task.description for task in crews[0].tasks] == ["test task"]
 
 
 def test_get_crews_with_nonexistent_file(temp_crew_project):
     crews = utils.get_crews(crew_path="nonexistent.py", require=False)
-    assert len(crews) == 0
+    assert crews == []
 
 
 def test_get_crews_with_required_nonexistent_file(temp_crew_project, capsys):
@@ -244,9 +227,10 @@ def test_get_crews_with_required_nonexistent_file(temp_crew_project, capsys):
 def test_get_crews_with_invalid_module(temp_crew_project, capsys):
     with open("crew.py", "w") as f:
         f.write("import nonexistent_module\n")
+    os.remove(os.path.join("src", "crew.py"))
 
     crews = utils.get_crews(crew_path="crew.py", require=False)
-    assert len(crews) == 0
+    assert crews == []
 
     with pytest.raises(SystemExit):
         utils.get_crews(crew_path="crew.py", require=True)
@@ -255,22 +239,12 @@ def test_get_crews_with_invalid_module(temp_crew_project, capsys):
     assert "Error" in captured.out
 
 
-def test_get_crews_ignores_template_directories(
-    temp_crew_project, monkeypatch, mock_crew
-):
-    template_crew_detected = False
+def test_get_crews_ignores_template_directories(temp_crew_project):
+    os.makedirs(os.path.join("cli", "templates"))
+    os.replace("crew.py", os.path.join("cli", "templates", "crew.py"))
+    os.remove(os.path.join("src", "crew.py"))
 
-    def mock_fetch_crews(module_attr):
-        nonlocal template_crew_detected
-        if hasattr(module_attr, "__file__") and "templates" in module_attr.__file__:
-            template_crew_detected = True
-        return [mock_crew]
-
-    monkeypatch.setattr(utils, "fetch_crews", mock_fetch_crews)
-
-    utils.get_crews()
-
-    assert not template_crew_detected
+    assert utils.get_crews() == []
 
 
 

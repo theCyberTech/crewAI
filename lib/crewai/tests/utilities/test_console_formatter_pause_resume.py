@@ -18,15 +18,6 @@ class TestConsoleFormatterPauseResume:
         mock_live.stop.assert_called_once()
         assert formatter._streaming_live is None
 
-    def test_pause_is_safe_when_no_session(self):
-        """Test pausing when no streaming session exists doesn't error."""
-        formatter = ConsoleFormatter()
-        formatter._streaming_live = None
-
-        formatter.pause_live_updates()
-
-        assert formatter._streaming_live is None
-
     def test_multiple_pauses_are_safe(self):
         """Test calling pause multiple times is safe."""
         formatter = ConsoleFormatter()
@@ -40,11 +31,8 @@ class TestConsoleFormatterPauseResume:
 
         formatter.pause_live_updates()
 
-    def test_resume_is_safe(self):
-        """Test resume method exists and doesn't error."""
-        formatter = ConsoleFormatter()
-
-        formatter.resume_live_updates()
+        assert mock_live.stop.call_count == 1
+        assert formatter._streaming_live is None
 
     def test_flow_method_status_ignores_formatter_verbose(self):
         formatter = ConsoleFormatter(verbose=False)

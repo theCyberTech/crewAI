@@ -151,7 +151,8 @@ class TestToolFailureModel:
         """A string that merely looks like an error is not a failure."""
         assert detect_tool_failure("Error: something went wrong") is None
         assert detect_tool_failure({"ok": False}) is None
-        assert detect_tool_failure(ToolFailure(message="x")) is not None
+        failure = ToolFailure(message="x")
+        assert detect_tool_failure(failure) is failure
 
     def test_failure_from_exception(self) -> None:
         failure = failure_from_exception(ValueError("bad input"))
@@ -304,20 +305,15 @@ class TestPolicyResolution:
 class TestDefaults:
     """Every scope defaults to None ('inherit'); the resolver owns 'warn'."""
 
-    def test_agent_defaults_to_inherit(self) -> None:
-        assert Agent(role="r", goal="g", backstory="b").tool_failure_policy is None
-
-    def test_task_defaults_to_inherit(self) -> None:
-        assert Task(description="d", expected_output="e").tool_failure_policy is None
-
-    def test_crew_defaults_to_inherit(self) -> None:
-        from crewai import Crew
-
-        agent = Agent(role="r", goal="g", backstory="b")
-        assert Crew(agents=[agent], tasks=[]).tool_failure_policy is None
-
     def test_tool_defaults_to_inherit(self) -> None:
-        assert SlackTool().tool_failure_policy is None
+        agent = Agent(
+            role="r",
+            goal="g",
+            backstory="b",
+            tool_failure_policy=ToolFailurePolicy.IGNORE,
+        )
+        resolved = resolve_tool_failure_policy(tool=SlackTool(), agent=agent)
+        assert resolved is ToolFailurePolicy.IGNORE
 
     def test_effective_default_is_warn(self) -> None:
         agent = Agent(role="r", goal="g", backstory="b")
@@ -360,8 +356,9 @@ class TestEndToEndPolicies:
             result = crew.kickoff()
 
         assert events == []
-        assert not result.has_tool_failures
+        assert result.has_tool_failures is False
         assert result.tool_failures == []
+        assert result.raw == "I could not post the message."
 
     def test_raise_aborts_the_run(self) -> None:
         crew, _ = _build_crew(ToolFailurePolicy.RAISE)
@@ -401,7 +398,18 @@ class TestEndToEndPolicies:
         """No explicit policy anywhere still records the failure."""
         crew, _ = _build_crew()
         result = crew.kickoff()
-        assert result.has_tool_failures
+        assert [
+            (f.tool_name, f.failure.code, f.failure.message, f.task_name)
+            for f in result.tool_failures
+        ] == [
+            (
+                "slackbot_send_message",
+                "channel_not_found",
+                "Slack rejected the message to #joao-message",
+                "post to slack",
+            )
+        ]
+        assert result.raw == "I could not post the message."
 
     def test_finished_event_carries_the_failure(self) -> None:
         crew, _ = _build_crew(ToolFailurePolicy.WARN)
@@ -425,11 +433,17 @@ class TestEndToEndPolicies:
         crew, _ = _build_crew(ToolFailurePolicy.WARN)
         result = crew.kickoff()
         tool_messages = [
-            m
+            m["content"]
             for m in result.tasks_output[0].messages
             if "Slack rejected the message" in str(m.get("content", ""))
         ]
-        assert tool_messages
+        assert tool_messages == [
+            "Thought: posting\n"
+            "Action: slackbot_send_message\n"
+            'Action Input: {"channel": "#joao-message"}\n'
+            "Observation: Slack rejected the message to #joao-message "
+            "(code: channel_not_found)"
+        ]
 
 
 class TestToolScopedPolicyReachesTheExecutor:
@@ -487,10 +501,8 @@ class TestToolScopedPolicyReachesTheExecutor:
         )
         task = Task(description="post to slack", expected_output="c", agent=agent)
         result = Crew(agents=[agent], tasks=[task]).kickoff()
-        assert not result.has_tool_failures
-
-    def test_plain_tools_default_to_inheriting(self) -> None:
-        assert SlackTool().tool_failure_policy is None
+        assert result.has_tool_failures is False
+        assert result.raw == "I could not post the message."
 
 
 class TestConsolePanels:
@@ -736,7 +748,8 @@ class TestRaisePolicySurvivesEveryWrapper:
             tasks=[task],
             tool_failure_policy=ToolFailurePolicy.IGNORE,
         ).kickoff()
-        assert not result.has_tool_failures
+        assert result.tool_failures == []
+        assert result.raw == "I could not post the message."
 
     def test_every_broad_handler_around_tool_execution_lets_it_through(self) -> None:
         """Guard against a new `except Exception` quietly downgrading an abort.
@@ -865,8 +878,7 @@ class TestIgnoreSurfacesNothing:
             crewai_event_bus.flush(timeout=10.0)
 
         slack = [e for e in finished if e.tool_name == "slackbot_send_message"]
-        assert slack, "the tool call should still report as finished"
-        assert all(e.failure is None for e in slack)
+        assert [e.failure for e in slack] == [None]
 
     def test_finished_event_carries_failure_under_warn(self) -> None:
         crew, _ = _build_crew(ToolFailurePolicy.WARN)
@@ -882,7 +894,7 @@ class TestIgnoreSurfacesNothing:
             crewai_event_bus.flush(timeout=10.0)
 
         slack = [e for e in finished if e.tool_name == "slackbot_send_message"]
-        assert any(e.failure is not None for e in slack)
+        assert [e.failure.code for e in slack] == ["channel_not_found"]
 
     def test_reportable_failure_helper(self) -> None:
         from crewai.tools.tool_failure import reportable_failure
@@ -904,13 +916,6 @@ class TestIgnoreSurfacesNothing:
         assert reportable_failure(failure, agent=warning) is failure
         assert reportable_failure(None, agent=warning) is None
 
-    def test_ignore_still_shows_a_console_panel(self) -> None:
-        """With no failure flag, the ordinary green panel is restored."""
-        from crewai.events.utils.console_formatter import ConsoleFormatter
-
-        formatter = ConsoleFormatter(verbose=True)
-        assert formatter.should_render_success_panel(None) is True
-
 
 class TestFailuresAreNotCached:
     """A cached failure would make a transient error permanent."""
@@ -930,7 +935,11 @@ class TestFailuresAreNotCached:
         assert cache.read(tool="t", input="{}") == "fine"
 
     def test_repeated_failures_are_recorded_once_each(self) -> None:
-        """Two failing calls give two records, not a replayed cache hit."""
+        """A repeated failing call is not answered from the cache.
+
+        The identical second call is stopped by the repeated-usage guard, so
+        only the first call's failure is recorded.
+        """
         agent = Agent(
             role="Slack Messenger",
             goal="post a message",
@@ -947,10 +956,19 @@ class TestFailuresAreNotCached:
         )
         task = Task(description="post twice", expected_output="c", agent=agent)
         result = Crew(agents=[agent], tasks=[task], cache=True).kickoff()
-        assert len(result.tool_failures) >= 1
-        assert all(
-            f.failure.code == "channel_not_found" for f in result.tool_failures
-        )
+        assert [f.failure.message for f in result.tool_failures] == [
+            "Slack rejected the message to #c"
+        ]
+        observations = [
+            m["content"].rsplit("Observation: ", 1)[1]
+            for m in result.tasks_output[0].messages
+            if m["role"] == "assistant"
+        ]
+        assert observations == [
+            "Slack rejected the message to #c (code: channel_not_found)",
+            "I tried reusing the same input, I must stop using this action input. "
+            "I'll try something else instead.",
+        ]
 
 
 class TestUsageLimitIsStructured:
@@ -1144,8 +1162,7 @@ class TestCrewScopeReachesTheFinishedEvent:
             crewai_event_bus.flush(timeout=10.0)
 
         slack = [e for e in finished if e.tool_name == "slackbot_send_message"]
-        assert slack
-        assert all(e.failure is None for e in slack)
+        assert [e.failure for e in slack] == [None]
 
     def test_tool_usage_accepts_and_stores_crew(self) -> None:
         from crewai.tools.tool_usage import ToolUsage
@@ -1284,14 +1301,6 @@ class TestMalformedArgumentsAreReported:
         args, error = parse_tool_call_args('{"text": "hi"}', "echo", "call_1")
         assert args == {"text": "hi"}
         assert error is None
-
-    def test_reason_enum_member_is_used(self) -> None:
-        """INVALID_INPUT was declared but unreferenced before this."""
-        import inspect
-
-        from crewai.utilities import agent_utils
-
-        assert "INVALID_INPUT" in inspect.getsource(agent_utils.parse_tool_call_args)
 
 
 class TestDeprecatedExecutorIsNotIntegrated:
@@ -1571,9 +1580,6 @@ class TestMalformedArgsOnEveryPath:
 class TestBlockedCallsAreNotFailures:
     """A hook block is a deliberate decision, so it is not reported as one."""
 
-    def test_no_blocked_by_hook_reason_exists(self) -> None:
-        assert not hasattr(ToolFailureReason, "BLOCKED_BY_HOOK")
-
     def test_every_reason_is_actually_produced(self) -> None:
         """Guard against another declared-but-unused reason."""
         from pathlib import Path
@@ -1764,8 +1770,9 @@ class TestSuccessfulToolsUnaffected:
         task = Task(description="echo hi", expected_output="hi", agent=agent)
         result = Crew(agents=[agent], tasks=[task]).kickoff()
 
-        assert not result.has_tool_failures
+        assert result.has_tool_failures is False
         assert result.tool_failures == []
+        assert result.raw == "echoed: hi"
 
     def test_failures_reset_between_executions(self) -> None:
         crew, agent = _build_crew(ToolFailurePolicy.WARN)

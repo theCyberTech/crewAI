@@ -63,7 +63,9 @@ def _clear_learned_models():
 class TestErrorClassification:
     @pytest.mark.parametrize("message", RESPONSES_ONLY_MESSAGES)
     def test_detects_responses_only_404(self, message: str):
-        assert OpenAICompletion._is_responses_only_error(make_not_found(message))
+        assert (
+            OpenAICompletion._is_responses_only_error(make_not_found(message)) is True
+        )
 
     def test_ignores_genuine_unknown_model(self):
         """A real typo must keep failing, not get retried on another endpoint."""
@@ -72,10 +74,10 @@ class TestErrorClassification:
             "to it.",
             code="model_not_found",
         )
-        assert not OpenAICompletion._is_responses_only_error(error)
+        assert OpenAICompletion._is_responses_only_error(error) is False
 
     def test_ignores_unrelated_exceptions(self):
-        assert not OpenAICompletion._is_responses_only_error(RuntimeError("boom"))
+        assert OpenAICompletion._is_responses_only_error(RuntimeError("boom")) is False
 
 
 class TestFallback:

@@ -6,7 +6,12 @@ from crewai import Agent, Crew, Task
 from crewai.events.event_bus import crewai_event_bus
 from crewai.events.types.llm_events import LLMStreamChunkEvent
 from crewai.flow.flow import Flow, start
-from crewai.types.streaming import AsyncStreamSession, CrewStreamingOutput, StreamSession
+from crewai.types.streaming import (
+    AsyncStreamSession,
+    CrewStreamingOutput,
+    StreamChunkType,
+    StreamSession,
+)
 
 
 @pytest.fixture
@@ -53,11 +58,16 @@ class TestStreamingCrewIntegration:
         for chunk in streaming:
             chunks.append(chunk.content)
 
-        assert len(chunks) > 0
+        assert len(chunks) == 772
 
         result = streaming.result
-        assert result.raw is not None
-        assert len(result.raw) > 0
+        assert result.raw.startswith(
+            "Recent developments in artificial intelligence (AI) throughout 2023 "
+            "and early 2024 have continued to accelerate"
+        )
+        assert result.raw.endswith(
+            "towards more powerful, versatile, and responsible intelligent systems."
+        )
 
     @pytest.mark.vcr()
     def test_streaming_with_chunk_context_from_docs(
@@ -85,11 +95,16 @@ class TestStreamingCrewIntegration:
                 }
             )
 
-        assert len(chunk_contexts) > 0
-        assert all("agent_role" in ctx for ctx in chunk_contexts)
+        assert {
+            (ctx["task_name"], ctx["task_index"], ctx["agent_role"], ctx["type"])
+            for ctx in chunk_contexts
+        } == {("", 0, "Research Analyst", StreamChunkType.TEXT)}
 
         result = streaming.result
-        assert result is not None
+        assert result.raw.startswith(
+            "Recent developments in AI as of 2024 have been marked by significant "
+            "advancements"
+        )
 
     @pytest.mark.vcr()
     def test_streaming_properties_from_docs(
@@ -137,10 +152,13 @@ class TestStreamingCrewIntegration:
         async for chunk in streaming:
             chunks.append(chunk.content)
 
-        assert len(chunks) > 0
+        assert len(chunks) == 628
 
         result = streaming.result
-        assert result.raw is not None
+        assert result.raw.startswith(
+            "Recent developments in artificial intelligence (AI) have been marked "
+            "by significant advances across multiple subfields"
+        )
 
     @pytest.mark.vcr()
     def test_kickoff_for_each_streaming_from_docs(
@@ -220,10 +238,13 @@ class TestStreamingFlowIntegration:
         for chunk in streaming:
             chunks.append(chunk.content)
 
-        assert len(chunks) > 0
+        assert len(chunks) == 837
 
         result = streaming.result
-        assert result is not None
+        assert result.startswith(
+            "Research on current Artificial Intelligence (AI) trends reveals "
+            "multiple significant directions"
+        )
 
     @pytest.mark.vcr()
     def test_flow_streaming_properties_from_docs(self) -> None:
@@ -300,5 +321,9 @@ class TestStreamingFlowIntegration:
         async for chunk in streaming:
             chunks.append(chunk.content)
 
+        assert len(chunks) == 1237
+
         result = streaming.result
-        assert result is not None
+        assert result.startswith(
+            "**Comprehensive Research Findings on Artificial Intelligence (AI)**"
+        )

@@ -69,5 +69,5 @@ class InternalCrewTrainingHandler(unittest.TestCase):
             "crewai.utilities.file_handler.store_lock",
             side_effect=AssertionError("load() short-circuited on size 0"),
         ):
-            with self.assertRaises(AssertionError):
+            with self.assertRaisesRegex(AssertionError, "short-circuited on size 0"):
                 self.handler.load()

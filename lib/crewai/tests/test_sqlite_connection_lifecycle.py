@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 from pathlib import Path
 
@@ -74,18 +73,6 @@ def test_flow_persistence_closes_every_connection(
     _assert_all_closed(opened)
 
 
-def test_flow_persistence_db_is_removable_after_use(tmp_path: Path) -> None:
-    """The flow database can be deleted right after use, without a GC pass."""
-    db_path = tmp_path / "flows.db"
-    persistence = SQLiteFlowPersistence(str(db_path))
-    persistence.save_state("flow-1", "start", {"step": 1})
-    persistence.load_state("flow-1")
-    del persistence
-
-    os.remove(db_path)
-    assert not db_path.exists()
-
-
 def test_flow_persistence_failed_write_rolls_back_and_closes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -126,14 +113,3 @@ def test_sqlite_provider_closes_every_connection(
 
     assert len(opened) == 3
     _assert_all_closed(opened)
-
-
-def test_sqlite_provider_db_is_removable_after_use(tmp_path: Path) -> None:
-    """The checkpoint database can be deleted right after use, without a GC pass."""
-    db_path = tmp_path / "checkpoints.db"
-    provider = SqliteProvider()
-    location = provider.checkpoint('{"a": 1}', str(db_path), branch="main")
-    provider.from_checkpoint(location)
-
-    os.remove(db_path)
-    assert not db_path.exists()

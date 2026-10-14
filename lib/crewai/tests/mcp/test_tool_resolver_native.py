@@ -46,12 +46,8 @@ class TestResolveNativeEmptyTools:
 
         assert tools == []
         assert clients == []
-        warning_calls = [
-            call for call in mock_log.call_args_list if call.args[0] == "warning"
-        ]
-        assert any(
-            "No tools discovered from MCP server" in call.args[1]
-            for call in warning_calls
+        mock_log.assert_any_call(
+            "warning", "No tools discovered from MCP server: mcp_example_com_api"
         )
 
     @patch("crewai.mcp.tool_resolver.MCPClient")
@@ -79,12 +75,8 @@ class TestResolveNativeEmptyTools:
 
         assert tools == []
         assert clients == []
-        warning_calls = [
-            call for call in mock_log.call_args_list if call.args[0] == "warning"
-        ]
-        assert any(
-            "No tools discovered from MCP server" in call.args[1]
-            for call in warning_calls
+        mock_log.assert_any_call(
+            "warning", "No tools discovered from MCP server: mcp_example_com_api"
         )
 
 

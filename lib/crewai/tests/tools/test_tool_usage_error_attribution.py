@@ -18,7 +18,6 @@ import pytest
 from crewai.tools import BaseTool
 from crewai.tools.tool_usage import ToolUsage
 from crewai.tools.tool_calling import ToolCalling
-from crewai.utilities.string_utils import sanitize_tool_name
 
 
 class ExplodingTool(BaseTool):
@@ -87,7 +86,7 @@ def test_sync_execution_error_reports_the_tool_name():
     usage.use(calling=calling_for(tool), tool_string="Action: Exploding Tool")
 
     recorded = recorded_tool_name(usage)
-    assert recorded == sanitize_tool_name(tool.name)
+    assert recorded == "exploding_tool"
     assert recorded, "an empty tool_name reproduces the bug: the emitter skips falsy values"
 
 
@@ -99,7 +98,7 @@ async def test_async_execution_error_reports_the_tool_name():
     await usage.ause(calling=calling_for(tool), tool_string="Action: Exploding Tool")
 
     recorded = recorded_tool_name(usage)
-    assert recorded == sanitize_tool_name(tool.name)
+    assert recorded == "exploding_tool"
     assert recorded, "an empty tool_name reproduces the bug: the emitter skips falsy values"
 
 
@@ -111,7 +110,7 @@ def test_sync_usage_limit_error_reports_the_tool_name():
     usage.use(calling=calling_for(tool), tool_string="Action: Limited Tool")
 
     recorded = recorded_tool_name(usage)
-    assert recorded == sanitize_tool_name(tool.name)
+    assert recorded == "limited_tool"
     assert recorded, "an empty tool_name reproduces the bug: the emitter skips falsy values"
 
 
@@ -124,7 +123,7 @@ async def test_async_usage_limit_error_reports_the_tool_name():
     await usage.ause(calling=calling_for(tool), tool_string="Action: Limited Tool")
 
     recorded = recorded_tool_name(usage)
-    assert recorded == sanitize_tool_name(tool.name)
+    assert recorded == "limited_tool"
     assert recorded, "an empty tool_name reproduces the bug: the emitter skips falsy values"
 
 

@@ -210,33 +210,44 @@ class TestO1FlagUntouched:
 
 class TestErrorDetection:
     def test_matches_unsupported_parameter(self):
-        assert build()._rejects_reasoning_effort_as_unsupported(
-            unsupported_parameter_error()
+        assert (
+            build()._rejects_reasoning_effort_as_unsupported(
+                unsupported_parameter_error()
+            )
+            is True
         )
 
     def test_matches_unrecognized_argument(self):
-        assert build()._rejects_reasoning_effort_as_unsupported(
-            unrecognized_argument_error()
+        assert (
+            build()._rejects_reasoning_effort_as_unsupported(
+                unrecognized_argument_error()
+            )
+            is True
         )
 
     def test_ignores_an_unsupported_value(self):
         """Dropping the key here would silently restore the original bug."""
-        assert not build()._rejects_reasoning_effort_as_unsupported(
-            unsupported_value_error()
+        assert (
+            build()._rejects_reasoning_effort_as_unsupported(unsupported_value_error())
+            is False
         )
 
     def test_ignores_a_400_about_another_parameter(self):
-        assert not build()._rejects_reasoning_effort_as_unsupported(
-            _bad_request(
-                "Unsupported parameter: 'temperature' is not supported.",
-                param="temperature",
-                code="unsupported_parameter",
+        assert (
+            build()._rejects_reasoning_effort_as_unsupported(
+                _bad_request(
+                    "Unsupported parameter: 'temperature' is not supported.",
+                    param="temperature",
+                    code="unsupported_parameter",
+                )
             )
+            is False
         )
 
     def test_ignores_unrelated_exceptions(self):
-        assert not build()._rejects_reasoning_effort_as_unsupported(
-            RuntimeError("boom")
+        assert (
+            build()._rejects_reasoning_effort_as_unsupported(RuntimeError("boom"))
+            is False
         )
 
 

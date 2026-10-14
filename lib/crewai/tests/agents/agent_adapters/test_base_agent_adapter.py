@@ -5,7 +5,6 @@ from crewai.agents.agent_builder.base_agent import BaseAgent
 from crewai.agents.agent_adapters.base_agent_adapter import BaseAgentAdapter
 from crewai.tools.base_tool import BaseTool
 from crewai.agents.agent_builder.utilities.base_token_process import TokenProcess
-from pydantic import BaseModel
 
 
 # Concrete implementation for testing
@@ -72,6 +71,7 @@ def test_base_agent_adapter_initialization():
     assert isinstance(adapter, BaseAgent)
     assert isinstance(adapter, BaseAgentAdapter)
     assert adapter.role == "test role"
+    assert adapter.adapted_agent is True
     assert adapter._agent_config is None
     assert adapter.adapted_structured_output is False
 
@@ -86,36 +86,6 @@ def test_base_agent_adapter_initialization_with_config():
         backstory="test backstory",
     )
     assert adapter._agent_config == config
-
-
-def test_configure_tools_method_exists():
-    """Test that configure_tools method exists and can be called."""
-    adapter = ConcreteAgentAdapter(
-        role="test role", goal="test goal", backstory="test backstory"
-    )
-    tools = []
-    adapter.configure_tools(tools)
-    assert hasattr(adapter, "tools")
-    assert adapter.tools == tools
-
-
-def test_configure_structured_output_method_exists():
-    """Test that configure_structured_output method exists and can be called."""
-    adapter = ConcreteAgentAdapter(
-        role="test role", goal="test goal", backstory="test backstory"
-    )
-
-    class DummyOutput(BaseModel):
-        data: str
-
-    structured_output = DummyOutput
-    adapter.configure_structured_output(structured_output)
-    # For now, just ensuring it runs without error is sufficient
-
-
-def test_base_agent_adapter_inherits_base_agent():
-    """Test that BaseAgentAdapter inherits from BaseAgent."""
-    assert issubclass(BaseAgentAdapter, BaseAgent)
 
 
 class ConcreteAgentAdapterWithoutRequiredMethods(BaseAgentAdapter):

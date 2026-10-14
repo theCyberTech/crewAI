@@ -310,8 +310,10 @@ class TestGetMCPToolsAmpIntegration:
 
         tools = agent.get_mcp_tools([MCPServerSSE(url="https://mcp.notion.so/sse")])
 
-        assert tools
-        assert all(tool.server_reference is None for tool in tools)
+        assert [(tool.name, tool.server_reference) for tool in tools] == [
+            ("mcp_notion_so_sse_search", None),
+            ("mcp_notion_so_sse_create_page", None),
+        ]
 
     @patch("crewai.mcp.tool_resolver.MCPClient")
     @patch.object(MCPToolResolver, "_fetch_amp_mcp_configs")
@@ -358,8 +360,7 @@ class TestGetMCPToolsAmpIntegration:
         tools = agent.get_mcp_tools(["notion#get-page"])
 
         mock_fetch.assert_called_once_with(["notion"])
-        assert len(tools) == 1
-        assert tools[0].name.endswith("_get_page")
+        assert [tool.name for tool in tools] == ["mcp_notion_so_sse_get_page"]
 
     @patch("crewai.mcp.tool_resolver.MCPClient")
     @patch.object(MCPToolResolver, "_fetch_amp_mcp_configs")
@@ -384,7 +385,10 @@ class TestGetMCPToolsAmpIntegration:
         tools = agent.get_mcp_tools(["notion#search", "notion#create_page"])
 
         mock_fetch.assert_called_once_with(["notion"])
-        assert len(tools) == 2
+        assert [tool.name for tool in tools] == [
+            "mcp_notion_so_sse_search",
+            "mcp_notion_so_sse_create_page",
+        ]
 
     @patch.object(MCPToolResolver, "_fetch_amp_mcp_configs")
     def test_skips_missing_configs_gracefully(self, mock_fetch, agent):
@@ -497,8 +501,7 @@ class TestResolveExternalToolFilter:
 
         tools = resolver._resolve_external("https://mcp.example.com/api#get-page")
 
-        assert len(tools) == 1
-        assert "get_page" in tools[0].name
+        assert [tool.name for tool in tools] == ["mcp_example_com_api_get_page"]
 
     @patch.object(MCPToolResolver, "_get_mcp_tool_schemas")
     def test_filters_underscored_tool_name(self, mock_schemas, resolver):
@@ -516,8 +519,7 @@ class TestResolveExternalToolFilter:
 
         tools = resolver._resolve_external("https://mcp.example.com/api#get_page")
 
-        assert len(tools) == 1
-        assert "get_page" in tools[0].name
+        assert [tool.name for tool in tools] == ["mcp_example_com_api_get_page"]
 
     @patch.object(MCPToolResolver, "_get_mcp_tool_schemas")
     def test_returns_all_tools_without_hash(self, mock_schemas, resolver):
@@ -534,7 +536,10 @@ class TestResolveExternalToolFilter:
 
         tools = resolver._resolve_external("https://mcp.example.com/api")
 
-        assert len(tools) == 2
+        assert [tool.name for tool in tools] == [
+            "mcp_example_com_api_get_page",
+            "mcp_example_com_api_search",
+        ]
 
     @patch.object(MCPToolResolver, "_get_mcp_tool_schemas")
     def test_returns_empty_for_nonexistent_tool(self, mock_schemas, resolver):

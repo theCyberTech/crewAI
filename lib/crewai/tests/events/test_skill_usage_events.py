@@ -13,6 +13,7 @@ from crewai import Agent, Task
 from crewai.events import crewai_event_bus
 from crewai.events.types.skill_events import SkillUsedEvent
 from crewai.skills.loader import activate_skill, discover_skills
+from crewai.skills.models import INSTRUCTIONS
 from crewai.skills.tool import LoadSkillTool
 
 
@@ -164,7 +165,7 @@ class TestSkillUsedEvent:
             agent._finalize_task_prompt("PROMPT", [], task)
             assert crewai_event_bus.flush(timeout=10)
 
-        assert received[0].disclosure_level >= 2
+        assert received[0].disclosure_level == INSTRUCTIONS
 
     def test_agent_without_skills_emits_nothing(self) -> None:
         agent = Agent(

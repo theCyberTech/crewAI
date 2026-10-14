@@ -3,10 +3,27 @@
 This module tests the RWLock class for correct concurrent read and write behavior.
 """
 
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 import threading
 import time
 
+import pytest
 from crewai.utilities.rw_lock import RWLock
+
+
+def _acquired_in_thread(
+    locked: Callable[[], AbstractContextManager[None]], timeout: float = 1.0
+) -> bool:
+    """Whether another thread obtains ``locked()`` within ``timeout`` seconds."""
+    acquired = threading.Event()
+
+    def target() -> None:
+        with locked():
+            acquired.set()
+
+    threading.Thread(target=target, daemon=True).start()
+    return acquired.wait(timeout)
 
 
 def test_multiple_readers_concurrent():
@@ -42,7 +59,7 @@ def test_multiple_readers_concurrent():
 def test_writer_blocks_readers():
     lock = RWLock()
     writer_holding_lock = [False]
-    reader_accessed_during_write = [False]
+    reader_observed_writer: list[bool] = []
 
     def writer() -> None:
         with lock.w_locked():
@@ -53,8 +70,7 @@ def test_writer_blocks_readers():
     def reader() -> None:
         time.sleep(0.05)
         with lock.r_locked():
-            if writer_holding_lock[0]:
-                reader_accessed_during_write[0] = True
+            reader_observed_writer.append(writer_holding_lock[0])
 
     writer_thread = threading.Thread(target=writer)
     reader_thread = threading.Thread(target=reader)
@@ -65,21 +81,27 @@ def test_writer_blocks_readers():
     writer_thread.join()
     reader_thread.join()
 
-    assert not reader_accessed_during_write[0]
+    assert reader_observed_writer == [False]
 
 
 def test_writer_blocks_other_writers():
     lock = RWLock()
-    execution_order: list[int] = []
-    lock_for_order = threading.Lock()
+    active_writers = [0]
+    max_concurrent_writers = [0]
+    lock_for_counters = threading.Lock()
 
-    def writer(writer_id: int) -> None:
+    def writer() -> None:
         with lock.w_locked():
-            with lock_for_order:
-                execution_order.append(writer_id)
+            with lock_for_counters:
+                active_writers[0] += 1
+                max_concurrent_writers[0] = max(
+                    max_concurrent_writers[0], active_writers[0]
+                )
             time.sleep(0.1)
+            with lock_for_counters:
+                active_writers[0] -= 1
 
-    threads = [threading.Thread(target=writer, args=(i,)) for i in range(3)]
+    threads = [threading.Thread(target=writer) for _ in range(3)]
 
     for thread in threads:
         thread.start()
@@ -87,14 +109,13 @@ def test_writer_blocks_other_writers():
     for thread in threads:
         thread.join()
 
-    assert len(execution_order) == 3
-    assert len(set(execution_order)) == 3
+    assert max_concurrent_writers[0] == 1
 
 
 def test_readers_block_writers():
     lock = RWLock()
     reader_count = [0]
-    writer_accessed_during_read = [False]
+    writer_observed_readers: list[int] = []
     lock_for_counters = threading.Lock()
 
     def reader() -> None:
@@ -109,8 +130,7 @@ def test_readers_block_writers():
         time.sleep(0.05)
         with lock.w_locked():
             with lock_for_counters:
-                if reader_count[0] > 0:
-                    writer_accessed_during_read[0] = True
+                writer_observed_readers.append(reader_count[0])
 
     reader_thread = threading.Thread(target=reader)
     writer_thread = threading.Thread(target=writer)
@@ -121,7 +141,7 @@ def test_readers_block_writers():
     reader_thread.join()
     writer_thread.join()
 
-    assert not writer_accessed_during_read[0]
+    assert writer_observed_readers == [0]
 
 
 def test_alternating_readers_and_writers():
@@ -169,40 +189,24 @@ def test_alternating_readers_and_writers():
 
 def test_context_manager_releases_on_exception():
     lock = RWLock()
-    exception_raised = False
 
-    try:
+    with pytest.raises(ValueError, match="Test exception"):
         with lock.r_locked():
+            assert _acquired_in_thread(lock.w_locked, timeout=0.1) is False
             raise ValueError("Test exception")
-    except ValueError:
-        exception_raised = True
 
-    assert exception_raised
-
-    acquired = False
-    with lock.w_locked():
-        acquired = True
-
-    assert acquired
+    assert _acquired_in_thread(lock.w_locked) is True
 
 
 def test_write_lock_releases_on_exception():
     lock = RWLock()
-    exception_raised = False
 
-    try:
+    with pytest.raises(ValueError, match="Test exception"):
         with lock.w_locked():
+            assert _acquired_in_thread(lock.r_locked, timeout=0.1) is False
             raise ValueError("Test exception")
-    except ValueError:
-        exception_raised = True
 
-    assert exception_raised
-
-    acquired = False
-    with lock.r_locked():
-        acquired = True
-
-    assert acquired
+    assert _acquired_in_thread(lock.r_locked) is True
 
 
 def test_stress_many_readers_few_writers():
@@ -242,23 +246,24 @@ def test_stress_many_readers_few_writers():
 
 def test_nested_read_locks_same_thread():
     lock = RWLock()
-    nested_acquired = False
 
     with lock.r_locked():
         with lock.r_locked():
-            nested_acquired = True
+            pass
+        assert _acquired_in_thread(lock.w_locked, timeout=0.1) is False
 
-    assert nested_acquired
+    assert _acquired_in_thread(lock.w_locked) is True
 
 
 def test_manual_acquire_release():
     lock = RWLock()
 
     lock.r_acquire()
+    assert _acquired_in_thread(lock.w_locked, timeout=0.1) is False
     lock.r_release()
+    assert _acquired_in_thread(lock.w_locked) is True
 
     lock.w_acquire()
+    assert _acquired_in_thread(lock.r_locked, timeout=0.1) is False
     lock.w_release()
-
-    with lock.r_locked():
-        pass
+    assert _acquired_in_thread(lock.r_locked) is True

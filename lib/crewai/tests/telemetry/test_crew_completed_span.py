@@ -8,6 +8,7 @@ flow outcomes already ship ungated.
 
 from __future__ import annotations
 
+import time
 from unittest.mock import MagicMock, patch
 
 from crewai import Agent, Crew, Task
@@ -125,7 +126,14 @@ class TestTheSpanItself:
         instance.crew_completed_span(crew, 1.0, "completed")
 
         attributes = _span(exporter, "Crew Completed").attributes
-        assert not [k for k in attributes if "token" in k.lower()]
+        assert set(attributes) == {
+            "crewai_version",
+            "crew_key",
+            "crew_id",
+            "crew_fingerprint",
+            "duration_ms",
+            "outcome",
+        }
 
 
 class TestTheListenerWiring:
@@ -144,9 +152,11 @@ class TestTheListenerWiring:
         """Kickoff records a start time; a terminal event consumes and clears it."""
         assert crew._telemetry_started_at is None
 
+        before = time.monotonic()
         self._run(crew, CrewKickoffStartedEvent(crew_name="c", inputs=None))
+        after = time.monotonic()
 
-        assert crew._telemetry_started_at is not None
+        assert before <= crew._telemetry_started_at <= after
 
     @pytest.mark.parametrize("terminal", ["completed", "failed"])
     def test_either_terminal_event_consumes_the_stamp(
@@ -162,12 +172,22 @@ class TestTheListenerWiring:
             else CrewKickoffFailedEvent(crew_name="c", error="boom")
         )
 
-        self._run(crew, CrewKickoffStartedEvent(crew_name="c", inputs=None), end)
+        with patch.object(Telemetry, "crew_completed_span") as reported:
+            self._run(
+                crew, CrewKickoffStartedEvent(crew_name="c", inputs=None), end
+            )
 
         assert crew._telemetry_started_at is None
+        reported.assert_called_once()
+        reported_crew, duration_ms, outcome = reported.call_args.args
+        assert reported_crew is crew
+        assert duration_ms >= 0
+        assert outcome == terminal
 
     def test_a_terminal_event_without_a_start_is_inert(self, crew: Crew) -> None:
         """A listener attached mid-run has no stamp; that is not an error."""
-        self._run(crew, CrewKickoffFailedEvent(crew_name="c", error="boom"))
+        with patch.object(Telemetry, "crew_completed_span") as reported:
+            self._run(crew, CrewKickoffFailedEvent(crew_name="c", error="boom"))
 
         assert crew._telemetry_started_at is None
+        reported.assert_not_called()

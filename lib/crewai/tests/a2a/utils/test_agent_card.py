@@ -21,8 +21,10 @@ class TestInjectA2AServerMethods:
             a2a=A2AServerConfig(),
         )
 
-        assert hasattr(agent, "to_agent_card")
-        assert callable(agent.to_agent_card)
+        card = agent.to_agent_card("http://localhost:8000")
+
+        assert card.name == "Test Agent"
+        assert card.url == "http://localhost:8000"
 
     def test_agent_without_server_config_no_injection(self) -> None:
         """Agent without A2AServerConfig should not get to_agent_card method."""
@@ -57,8 +59,9 @@ class TestInjectA2AServerMethods:
             ],
         )
 
-        assert hasattr(agent, "to_agent_card")
-        assert callable(agent.to_agent_card)
+        card = agent.to_agent_card("http://localhost:8000")
+
+        assert card.name == "My Agent"
 
     def test_manual_injection_on_plain_agent(self) -> None:
         """inject_a2a_server_methods should work when called manually."""
@@ -68,11 +71,13 @@ class TestInjectA2AServerMethods:
             backstory="Test backstory",
         )
         # Manually set server config and inject
-        object.__setattr__(agent, "a2a", A2AServerConfig())
+        object.__setattr__(agent, "a2a", A2AServerConfig(version="3.1.0"))
         inject_a2a_server_methods(agent)
 
-        assert hasattr(agent, "to_agent_card")
-        assert callable(agent.to_agent_card)
+        card = agent.to_agent_card("http://localhost:8000")
+
+        assert card.name == "Test Agent"
+        assert card.version == "3.1.0"
 
 
 class TestToAgentCard:
@@ -320,6 +325,26 @@ class TestAgentCardJsonStructure:
         card = agent.to_agent_card("http://localhost:8000")
         json_data = card.model_dump(exclude_none=True)
 
-        assert "provider" not in json_data
-        assert "documentationUrl" not in json_data
-        assert "iconUrl" not in json_data
+        assert json_data == {
+            "additionalInterfaces": [],
+            "capabilities": {"pushNotifications": False, "streaming": True},
+            "defaultInputModes": ["text/plain", "application/json"],
+            "defaultOutputModes": ["text/plain", "application/json"],
+            "description": "Test goal Test backstory",
+            "name": "Test Agent",
+            "preferredTransport": "JSONRPC",
+            "protocolVersion": "0.3.0",
+            "security": [],
+            "securitySchemes": {},
+            "skills": [
+                {
+                    "description": "Test goal",
+                    "id": "test_agent",
+                    "name": "Test Agent",
+                    "tags": ["test-agent"],
+                }
+            ],
+            "supportsAuthenticatedExtendedCard": False,
+            "url": "http://localhost:8000",
+            "version": "1.0.0",
+        }

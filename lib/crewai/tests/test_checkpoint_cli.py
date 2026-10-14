@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import click
 import pytest
 from crewai_cli.checkpoint_cli import (
     _info_json_file,
@@ -136,11 +137,11 @@ class TestParseDuration:
         assert _parse_duration("30m") == timedelta(minutes=30)
 
     def test_invalid_raises(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(click.BadParameter, match="Invalid duration: 'abc'"):
             _parse_duration("abc")
 
     def test_no_unit_raises(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(click.BadParameter, match="Invalid duration: '7'"):
             _parse_duration("7")
 
 
@@ -266,9 +267,11 @@ class TestDiffCheckpoints:
             )
             diff_checkpoints(d, "aaaa1111", "bbbb2222")
             out = capsys.readouterr().out
-            assert "---" in out
-            assert "+++" in out
-            assert "status:" in out or "pending -> done" in out
+            assert "--- 20260101T000000_aaaa1111_p-none.json" in out
+            assert "+++ 20260102T000000_bbbb2222_p-none.json" in out
+            assert "1. Task 1 description" not in out
+            assert "    2. Task 2 description\n      status: pending -> done" in out
+            assert "    3. Task 3 description\n      status: pending -> done" in out
 
     def test_diff_shows_output_change(self, capsys: pytest.CaptureFixture[str]) -> None:
         with tempfile.TemporaryDirectory() as d:
@@ -287,7 +290,12 @@ class TestDiffCheckpoints:
             )
             diff_checkpoints(d, "aaaa1111", "bbbb2222")
             out = capsys.readouterr().out
-            assert "output:" in out
+            assert (
+                "    1. Task 1 description\n"
+                "      output:\n"
+                "        - Result of task 1\n"
+                "        + Updated result"
+            ) in out
 
     def test_diff_not_found(self, capsys: pytest.CaptureFixture[str]) -> None:
         with tempfile.TemporaryDirectory() as d:
@@ -352,8 +360,13 @@ class TestPruneJson:
                 name="20260101T000000_aaaa1111_p-none.json",
             )
             os.utime(path, (0, 0))
-            _prune_json(d, keep=None, older_than=timedelta(days=1))
+            kept = _write_json_checkpoint(
+                d, name="20990101T000000_new01111_p-none.json"
+            )
+            deleted = _prune_json(d, keep=None, older_than=timedelta(days=1))
+            assert deleted == 1
             assert not os.path.exists(os.path.join(d, "feature"))
+            assert os.path.exists(kept)
 
 
 class TestPruneSqlite:

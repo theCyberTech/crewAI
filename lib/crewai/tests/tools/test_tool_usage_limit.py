@@ -64,9 +64,10 @@ def test_default_unlimited_usage():
     def default_tool(input_text: str) -> str:
         """A default tool."""
         return f"Result: {input_text}"
-    
-    assert default_tool.max_usage_count is None
-    assert default_tool.current_usage_count == 0
+
+    for i in range(5):
+        assert default_tool.run(input_text=f"test{i}") == f"Result: test{i}"
+    assert default_tool.current_usage_count == 5
 
 
 def test_invalid_usage_limit():

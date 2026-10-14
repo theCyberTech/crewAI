@@ -1,5 +1,7 @@
 """Tests for OpenAI async completion functionality."""
 
+import json
+
 import pytest
 
 from crewai import Agent, Task, Crew
@@ -14,9 +16,7 @@ async def test_openai_async_basic_call():
 
     result = await llm.acall("Say hello")
 
-    assert result is not None
-    assert isinstance(result, str)
-    assert len(result) > 0
+    assert result == "Hello! How can I assist you today?"
 
 
 @pytest.mark.vcr()
@@ -27,8 +27,7 @@ async def test_openai_async_with_temperature():
 
     result = await llm.acall("Say the word 'test' once")
 
-    assert result is not None
-    assert isinstance(result, str)
+    assert result == "Test."
 
 
 @pytest.mark.vcr()
@@ -39,9 +38,7 @@ async def test_openai_async_with_max_tokens():
 
     result = await llm.acall("Write a very long story about a dragon.")
 
-    assert result is not None
-    assert isinstance(result, str)
-    assert len(result.split()) <= 10
+    assert result == "**Title: The Last Ember of Eldoria**\n\n"
 
 
 @pytest.mark.vcr()
@@ -57,8 +54,7 @@ async def test_openai_async_with_system_message():
 
     result = await llm.acall(messages)
 
-    assert result is not None
-    assert isinstance(result, str)
+    assert result == "2 + 2 equals 4."
 
 
 @pytest.mark.vcr()
@@ -75,8 +71,7 @@ async def test_openai_async_conversation():
 
     result = await llm.acall(messages)
 
-    assert result is not None
-    assert isinstance(result, str)
+    assert result == "Your name is Alice."
 
 
 @pytest.mark.vcr()
@@ -88,10 +83,8 @@ async def test_openai_async_multiple_calls():
     result1 = await llm.acall("What is 1+1?")
     result2 = await llm.acall("What is 2+2?")
 
-    assert result1 is not None
-    assert result2 is not None
-    assert isinstance(result1, str)
-    assert isinstance(result2, str)
+    assert result1 == "1 + 1 equals 2."
+    assert result2 == "2 + 2 equals 4."
 
 
 @pytest.mark.vcr()
@@ -102,8 +95,11 @@ async def test_openai_async_with_response_format_none():
 
     result = await llm.acall("Tell me a short fact")
 
-    assert result is not None
-    assert isinstance(result, str)
+    assert result == (
+        "Octopuses have three hearts and blue blood. Two hearts pump blood to the "
+        "gills, where it picks up oxygen, while the third heart pumps it to the "
+        "rest of the body."
+    )
 
 
 @pytest.mark.vcr()
@@ -114,8 +110,7 @@ async def test_openai_async_with_response_format_json():
 
     result = await llm.acall("Return a JSON object with a 'greeting' field")
 
-    assert result is not None
-    assert isinstance(result, str)
+    assert json.loads(result) == {"greeting": "Hello, world!"}
 
 
 @pytest.mark.vcr()
@@ -133,8 +128,10 @@ async def test_openai_async_with_parameters():
 
     result = await llm.acall("Tell me a short fact")
 
-    assert result is not None
-    assert isinstance(result, str)
+    assert result == (
+        "Octopuses have three hearts: two pump blood to the gills, while the "
+        "third pumps it to the rest of the body."
+    )
 
 
 @pytest.mark.vcr()
@@ -160,8 +157,7 @@ async def test_openai_async_streaming_returns_usage_metrics():
     crew = Crew(agents=[agent], tasks=[task])
     result = await crew.kickoff_async()
 
-    assert result.token_usage is not None
-    assert result.token_usage.total_tokens > 0
-    assert result.token_usage.prompt_tokens > 0
-    assert result.token_usage.completion_tokens > 0
-    assert result.token_usage.successful_requests >= 1
+    assert result.token_usage.prompt_tokens == 168
+    assert result.token_usage.completion_tokens == 127
+    assert result.token_usage.total_tokens == 295
+    assert result.token_usage.successful_requests == 1

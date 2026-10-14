@@ -7,7 +7,6 @@ async support, and attribute preservation functionality.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -18,7 +17,6 @@ from crewai.flow import Flow, human_feedback, listen, persist, start
 from crewai.flow.human_feedback import (
     HumanFeedbackCollapseError,
     HumanFeedbackConfig,
-    HumanFeedbackResult,
     _resolve_llm_instance,
 )
 
@@ -105,7 +103,9 @@ class TestHumanFeedbackValidation:
         def test_method(self):
             return "output"
 
-        assert hasattr(test_method, "__human_feedback_config__")
+        assert test_method.__human_feedback_config__ == HumanFeedbackConfig(
+            message="Review this:"
+        )
         assert not hasattr(test_method, "__is_router__")
 
     def test_persist_preserves_human_feedback_config(self):
@@ -123,26 +123,6 @@ class TestHumanFeedbackValidation:
 
         assert hasattr(test_method, "__human_feedback_config__")
         assert test_method.__human_feedback_config__.llm is llm
-
-
-class TestHumanFeedbackConfig:
-    """Tests for HumanFeedbackConfig dataclass."""
-
-    def test_config_creation(self):
-        """Test HumanFeedbackConfig can be created with all parameters."""
-        config = HumanFeedbackConfig(
-            message="Test message",
-            emit=["a", "b"],
-            llm="gpt-4",
-            default_outcome="a",
-            metadata={"key": "value"},
-        )
-
-        assert config.message == "Test message"
-        assert config.emit == ["a", "b"]
-        assert config.llm == "gpt-4"
-        assert config.default_outcome == "a"
-        assert config.metadata == {"key": "value"}
 
 
 class TestResolveLlmInstance:
@@ -175,36 +155,6 @@ class TestResolveLlmInstance:
 
         assert llm is not None
         assert getattr(llm, "model", "") == DEFAULT_LLM_MODEL
-
-
-class TestHumanFeedbackResult:
-    """Tests for HumanFeedbackResult dataclass."""
-
-    def test_result_creation(self):
-        """Test HumanFeedbackResult can be created with all fields."""
-        result = HumanFeedbackResult(
-            output={"title": "Test"},
-            feedback="Looks good",
-            outcome="approved",
-            method_name="test_method",
-        )
-
-        assert result.output == {"title": "Test"}
-        assert result.feedback == "Looks good"
-        assert result.outcome == "approved"
-        assert result.method_name == "test_method"
-        assert isinstance(result.timestamp, datetime)
-        assert result.metadata == {}
-
-    def test_result_with_metadata(self):
-        """Test HumanFeedbackResult with custom metadata."""
-        result = HumanFeedbackResult(
-            output="test",
-            feedback="feedback",
-            metadata={"channel": "slack", "user": "test_user"},
-        )
-
-        assert result.metadata == {"channel": "slack", "user": "test_user"}
 
 
 class TestDecoratorAttributePreservation:
@@ -448,7 +398,6 @@ class TestHumanFeedbackHistory:
 
         assert flow.last_human_feedback is not None
         assert flow.last_human_feedback.feedback == "last feedback"
-        assert flow.last_human_feedback is flow.last_human_feedback
 
 
 class TestCollapseToOutcome:
@@ -626,6 +575,7 @@ class TestHumanFeedbackLearn:
         ):
             flow.kickoff()
 
+        assert flow.last_human_feedback.feedback == "looks good"
         # memory.recall and memory.remember_many should NOT be called
         flow.memory.recall.assert_not_called()
         flow.memory.remember_many.assert_not_called()
@@ -859,8 +809,9 @@ class TestHumanFeedbackLearn:
             mock_llm.call.side_effect = RuntimeError("simulated distill failure")
             MockLLM.return_value = mock_llm
 
-            flow.kickoff()  # must not raise
+            result = flow.kickoff()
 
+        assert (result.output, result.feedback) == ("raw draft", "please add citations")
         flow.memory.remember_many.assert_not_called()
         assert any(
             "HITL lesson distillation failed" in rec.message

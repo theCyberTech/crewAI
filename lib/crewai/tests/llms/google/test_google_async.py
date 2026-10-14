@@ -15,9 +15,7 @@ async def test_gemini_async_basic_call():
 
     result = await llm.acall("Say hello")
 
-    assert result is not None
-    assert isinstance(result, str)
-    assert len(result) > 0
+    assert result == "Hello! How can I help you today?"
 
 
 @pytest.mark.vcr()
@@ -28,8 +26,7 @@ async def test_gemini_async_with_temperature():
 
     result = await llm.acall("Say the word 'test' once")
 
-    assert result is not None
-    assert isinstance(result, str)
+    assert result == "Test"
 
 
 @pytest.mark.asyncio
@@ -40,9 +37,8 @@ async def test_gemini_async_with_max_tokens():
 
     result = await llm.acall("Write a very short story about a dragon.")
 
-    assert result is not None
-    assert isinstance(result, str)
-    assert len(result.split()) <= 1000
+    assert result.startswith("Cinder was the size of a cathedral")
+    assert result.endswith("getting the s'mores right took finesse.")
 
 
 @pytest.mark.vcr()
@@ -58,8 +54,7 @@ async def test_gemini_async_with_system_message():
 
     result = await llm.acall(messages)
 
-    assert result is not None
-    assert isinstance(result, str)
+    assert result == "2 + 2 is 4."
 
 
 @pytest.mark.vcr()
@@ -76,8 +71,7 @@ async def test_gemini_async_conversation():
 
     result = await llm.acall(messages)
 
-    assert result is not None
-    assert isinstance(result, str)
+    assert result == "Your name is Alice."
 
 
 @pytest.mark.vcr()
@@ -89,10 +83,8 @@ async def test_gemini_async_multiple_calls():
     result1 = await llm.acall("What is 1+1?")
     result2 = await llm.acall("What is 2+2?")
 
-    assert result1 is not None
-    assert result2 is not None
-    assert isinstance(result1, str)
-    assert isinstance(result2, str)
+    assert result1 == "1 + 1 = **2**"
+    assert result2 == "2 + 2 = 4"
 
 
 @pytest.mark.vcr()
@@ -108,8 +100,9 @@ async def test_gemini_async_with_parameters():
 
     result = await llm.acall("Tell me a short fact")
 
-    assert result is not None
-    assert isinstance(result, str)
+    assert result == (
+        "Botanically speaking, **bananas are berries**, but strawberries are not."
+    )
 
 
 @pytest.mark.vcr()

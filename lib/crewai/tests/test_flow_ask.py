@@ -510,12 +510,10 @@ class TestAskCheckpoint:
         flow = TestFlow(persistence=mock_persistence)
         flow.kickoff()
 
-        checkpoint_calls = [
-            c for c in mock_persistence.save_state.call_args_list
-            if c.kwargs.get("method_name") == "_ask_checkpoint"
-            or (len(c.args) >= 2 and c.args[1] == "_ask_checkpoint")
+        flow_id = flow.state["id"]
+        assert [c.args for c in mock_persistence.save_state.call_args_list] == [
+            (flow_id, "_ask_checkpoint", {"id": flow_id, "important": "data"})
         ]
-        assert len(checkpoint_calls) >= 1
 
     def test_ask_no_checkpoint_without_persistence(self) -> None:
         """No error when persistence is not configured."""
@@ -781,8 +779,9 @@ class TestAskIntegration:
         with patch.object(flow, "_request_human_feedback", return_value="looks good"):
             flow.kickoff()
 
-        # Flow completed with both ask and human_feedback
-        assert flow.last_human_feedback is not None
+        assert flow.last_human_feedback.feedback == "looks good"
+        assert flow.last_human_feedback.output == "Researching: unknown"
+        assert flow.last_human_feedback.method_name == "review"
 
     def test_ask_preserves_flow_lifecycle(self) -> None:
         """Flow events (started, finished) still fire normally with ask()."""
@@ -859,8 +858,7 @@ class TestConsoleProviderInput:
         ):
             provider.request_input("What topic?", MagicMock())
 
-        print_calls = [str(c) for c in mock_console.print.call_args_list]
-        assert any("What topic?" in c for c in print_calls)
+        mock_console.print.assert_any_call("What topic?", style="yellow")
 
     def test_console_provider_non_verbose(self) -> None:
         """ConsoleProvider in non-verbose mode uses plain input."""
@@ -916,11 +914,6 @@ class TestInputProviderProtocol:
                 return "custom"
 
         provider = MyProvider()
-        assert isinstance(provider, InputProvider)
-
-    def test_mock_provider_satisfies_protocol(self) -> None:
-        """MockInputProvider satisfies the InputProvider protocol."""
-        provider = MockInputProvider(["test"])
         assert isinstance(provider, InputProvider)
 
 

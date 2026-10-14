@@ -291,11 +291,12 @@ def test_memory_list_scopes_info_tree(tmp_path: Path, mock_embedder: MagicMock) 
     m.remember("Root", scope="/", categories=[], importance=0.5, metadata={})
     m.remember("Team note", scope="/team", categories=[], importance=0.5, metadata={})
     scopes = m.list_scopes("/")
-    assert "/team" in scopes  # list_scopes returns children, not root itself
+    assert scopes == ["/team"]  # list_scopes returns children, not root itself
     info = m.info("/")
-    assert info.record_count >= 1
+    assert info.record_count == 2
+    assert info.child_scopes == ["/team"]
     tree = m.tree("/", max_depth=2)
-    assert "/" in tree or "0 records" in tree or "1 records" in tree
+    assert tree == "/ (2 records)\n  /team (1 records)"
 
 
 
@@ -308,7 +309,9 @@ def test_memory_scope_remember_recall(tmp_path: Path, mock_embedder: MagicMock) 
     scope = MemoryScope(memory=mem, root_path="/crew/1")
     scope.remember("Scoped note", scope="/", categories=[], importance=0.5, metadata={})
     results = scope.recall("note", limit=5, depth="shallow")
-    assert len(results) >= 1
+    assert [(m.record.content, m.record.scope) for m in results] == [
+        ("Scoped note", "/crew/1")
+    ]
 
 
 
@@ -321,7 +324,7 @@ def test_memory_slice_recall(tmp_path: Path, mock_embedder: MagicMock) -> None:
     mem.remember("In scope A", scope="/a", categories=[], importance=0.5, metadata={})
     sl = MemorySlice(memory=mem, scopes=["/a"], read_only=True)
     matches = sl.recall("scope", limit=5, depth="shallow")
-    assert isinstance(matches, list)
+    assert [m.record.content for m in matches] == ["In scope A"]
 
 
 def test_memory_slice_remember_is_noop_when_read_only(tmp_path: Path, mock_embedder: MagicMock) -> None:
@@ -333,6 +336,10 @@ def test_memory_slice_remember_is_noop_when_read_only(tmp_path: Path, mock_embed
     result = sl.remember("x", scope="/a")
     assert result is None
     assert mem.list_records() == []
+
+    writable = MemorySlice(memory=mem, scopes=["/a"], read_only=False)
+    writable.remember("y", scope="/a", categories=[], importance=0.5, metadata={})
+    assert [r.content for r in mem.list_records()] == ["y"]
 
 
 def test_update_is_noop_when_read_only(tmp_path: Path, mock_embedder: MagicMock) -> None:
@@ -437,7 +444,7 @@ def test_flow_recall_remember_with_memory(tmp_path: Path, mock_embedder: MagicMo
     f = FlowWithMemory()
     f.remember("Flow remembered this", scope="/flow", categories=[], importance=0.6, metadata={})
     results = f.recall("remembered", limit=5, depth="shallow")
-    assert len(results) >= 1
+    assert [m.record.content for m in results] == ["Flow remembered this"]
 
 
 
@@ -533,7 +540,7 @@ def test_executor_save_to_memory_skips_delegation_output() -> None:
     )
 
     mock_memory.extract_memories.assert_not_called()
-    mock_memory.remember.assert_not_called()
+    mock_memory.remember_many.assert_not_called()
 
 
 def test_memory_scope_extract_memories_delegates() -> None:

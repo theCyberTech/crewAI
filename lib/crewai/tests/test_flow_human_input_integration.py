@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from crewai.events.event_listener import event_listener
@@ -9,17 +9,21 @@ class TestFlowHumanInputIntegration:
     """Test integration between Flow execution and human input functionality."""
 
     def test_console_formatter_pause_resume_methods_exist(self):
-        """Test that ConsoleFormatter pause/resume methods exist and are callable."""
+        """Test that pausing stops and clears an active Live session."""
         formatter = event_listener.formatter
+        original_streaming_live = formatter._streaming_live
+        live_session = MagicMock()
 
-        # Methods should exist and be callable
-        assert hasattr(formatter, "pause_live_updates")
-        assert hasattr(formatter, "resume_live_updates")
-        assert callable(formatter.pause_live_updates)
-        assert callable(formatter.resume_live_updates)
+        try:
+            formatter._streaming_live = live_session
 
-        formatter.pause_live_updates()
-        formatter.resume_live_updates()
+            formatter.pause_live_updates()
+            formatter.resume_live_updates()
+
+            live_session.stop.assert_called_once_with()
+            assert formatter._streaming_live is None
+        finally:
+            formatter._streaming_live = original_streaming_live
 
     @patch("builtins.input", return_value="")
     def test_human_input_pauses_flow_updates(self, mock_input):
@@ -30,15 +34,19 @@ class TestFlowHumanInputIntegration:
 
         formatter = event_listener.formatter
 
+        calls = MagicMock()
+        calls.attach_mock(mock_input, "input")
+
         with (
             patch.object(formatter, "pause_live_updates") as mock_pause,
             patch.object(formatter, "resume_live_updates") as mock_resume,
         ):
+            calls.attach_mock(mock_pause, "pause")
+            calls.attach_mock(mock_resume, "resume")
+
             result = provider._prompt_input(crew)
 
-            mock_pause.assert_called_once()
-            mock_resume.assert_called_once()
-            mock_input.assert_called_once()
+            assert calls.mock_calls == [call.pause(), call.input(), call.resume()]
             assert result == ""
 
     @patch("builtins.input", side_effect=["feedback", ""])

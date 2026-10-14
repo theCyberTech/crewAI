@@ -370,9 +370,9 @@ def test_hierarchical_process(researcher, writer):
 
     result = crew.kickoff()
 
-    assert result.raw is not None
-    assert len(result.raw) > 500
-    assert "ai" in result.raw.lower() or "artificial intelligence" in result.raw.lower()
+    assert result.raw.startswith(
+        "- **The Rise of Autonomous AI Agents in Everyday Applications**"
+    )
 
 
 def test_manager_llm_requirement_for_hierarchical_process(researcher, writer):
@@ -561,9 +561,9 @@ def test_crew_with_delegating_agents(ceo, writer):
 
     result = crew.kickoff()
 
-    assert result.raw is not None
-    assert len(result.raw) > 200  # Should be at least a few paragraphs
-    assert "ai" in result.raw.lower() or "agent" in result.raw.lower()
+    assert result.raw.startswith(
+        "AI Agents: Transforming the Future with Intelligent Automation"
+    )
 
 
 @pytest.mark.vcr()
@@ -610,14 +610,11 @@ def test_crew_with_delegating_agents_should_not_override_task_tools(ceo, writer)
         crew.kickoff()
 
         _, kwargs = mock_execute_sync.call_args
-        tools = kwargs["tools"]
-
-        assert any(isinstance(tool, TestTool) for tool in tools), (
-            "TestTool should be present"
-        )
-        assert any("delegate" in tool.name.lower() for tool in tools), (
-            "Delegation tool should be present"
-        )
+        assert [tool.name for tool in kwargs["tools"]] == [
+            "Test Tool",
+            "Delegate work to coworker",
+            "Ask question to coworker",
+        ]
 
 
 @pytest.mark.vcr()
@@ -666,14 +663,11 @@ def test_crew_with_delegating_agents_should_not_override_agent_tools(ceo, writer
         crew.kickoff()
 
         _, kwargs = mock_execute_sync.call_args
-        tools = kwargs["tools"]
-
-        assert any(isinstance(tool, TestTool) for tool in new_ceo.tools), (
-            "TestTool should be present"
-        )
-        assert any("delegate" in tool.name.lower() for tool in tools), (
-            "Delegation tool should be present"
-        )
+        assert [tool.name for tool in kwargs["tools"]] == [
+            "Test Tool",
+            "Delegate work to coworker",
+            "Ask question to coworker",
+        ]
 
 
 @pytest.mark.vcr()
@@ -1460,6 +1454,7 @@ def test_kickoff_for_each_error_handling():
         ]
         with pytest.raises(Exception, match="Simulated kickoff error"):
             crew.kickoff_for_each(inputs=inputs)
+        assert mock_kickoff.call_count == 3
 
 
 @pytest.mark.asyncio
@@ -1591,7 +1586,7 @@ def test_set_agents_step_callback():
     with patch.object(Agent, "execute_task") as execute:
         execute.return_value = "ok"
         crew.kickoff()
-        assert researcher_agent.step_callback is not None
+        assert researcher_agent.step_callback is crew.step_callback
 
 
 def test_dont_set_agents_step_callback_if_already_set():
@@ -1656,9 +1651,7 @@ def test_crew_function_calling_llm():
 
     crew = Crew(agents=[agent1], tasks=[essay])
     result = crew.kickoff()
-    # With native tool calling, verify the agent used the tool and got a greeting
-    assert result.raw is not None
-    assert "howdy" in result.raw.lower() or "hello" in result.raw.lower() or "hi" in result.raw.lower()
+    assert result.raw == "Howdy!"
 
 
 @pytest.mark.vcr()
@@ -1685,8 +1678,7 @@ def test_task_with_no_arguments():
     crew = Crew(agents=[researcher], tasks=[task])
 
     result = crew.kickoff()
-    assert result.raw is not None
-    assert "75" in result.raw or "sales" in result.raw.lower()
+    assert result.raw == "75"
 
 
 def test_code_execution_flag_adds_code_tool_upon_kickoff():
@@ -1711,16 +1703,18 @@ def test_code_execution_flag_adds_code_tool_upon_kickoff():
             description="Mock description", raw="mocked output", agent="mocked agent"
         )
 
-        with patch.object(
-            Task, "execute_sync", return_value=mock_task_output
-        ) as mock_execute_sync:
+        with (
+            patch.object(
+                Task, "execute_sync", return_value=mock_task_output
+            ) as mock_execute_sync,
+            pytest.warns(
+                DeprecationWarning, match="CodeInterpreterTool is no longer available"
+            ),
+        ):
             crew.kickoff()
 
             _, kwargs = mock_execute_sync.call_args
-            used_tools = kwargs["tools"]
-
-            # CodeInterpreterTool was removed; get_code_execution_tools() now returns []
-            assert len(used_tools) == 0, "Should have no tools (code execution tools are deprecated)"
+            assert kwargs["tools"] == []
 
 
 @pytest.mark.vcr()
@@ -1740,8 +1734,17 @@ def test_delegation_is_not_enabled_if_there_are_only_one_agent():
 
     crew = Crew(agents=[researcher], tasks=[task])
 
-    crew.kickoff()
-    assert task.tools == []
+    mock_task_output = TaskOutput(
+        description="Mock description", raw="mocked output", agent="mocked agent"
+    )
+    task.output = mock_task_output
+
+    with patch.object(
+        Task, "execute_sync", return_value=mock_task_output
+    ) as mock_execute_sync:
+        crew.kickoff()
+
+    assert mock_execute_sync.call_args.kwargs["tools"] == []
 
 
 @pytest.mark.vcr()
@@ -1801,14 +1804,14 @@ def test_agent_usage_metrics_are_captured_for_hierarchical_process():
     )
 
     result = crew.kickoff()
-    assert result.raw is not None
-    assert len(result.raw) > 0
-
-    # Main purpose: verify usage metrics are captured
-    assert result.token_usage.total_tokens > 0
-    assert result.token_usage.prompt_tokens > 0
-    assert result.token_usage.completion_tokens > 0
-    assert result.token_usage.successful_requests > 0
+    assert result.raw == "Howdy!"
+    assert result.token_usage == UsageMetrics(
+        total_tokens=1284,
+        prompt_tokens=1194,
+        cached_prompt_tokens=0,
+        completion_tokens=90,
+        successful_requests=3,
+    )
 
 
 def test_hierarchical_kickoff_usage_metrics_include_manager(researcher):
@@ -2063,8 +2066,16 @@ def test_crew_inputs_interpolate_both_agents_and_tasks_diff():
             ) as interpolate_task_inputs:
                 execute.return_value = "ok"
                 crew.kickoff(inputs={"topic": "AI", "points": 5})
-                interpolate_agent_inputs.assert_called()
-                interpolate_task_inputs.assert_called()
+                interpolate_agent_inputs.assert_called_once_with(
+                    {"topic": "AI", "points": 5}
+                )
+                interpolate_task_inputs.assert_called_once_with(
+                    {"topic": "AI", "points": 5}
+                )
+                executed_task = execute.call_args.kwargs.get("task") or execute.call_args.args[0]
+                assert executed_task.description == "Give me an analysis around AI."
+                assert executed_task.expected_output == "5 bullet points about AI."
+                assert agent.role == "AI Researcher"
 
 
 @pytest.mark.vcr()
@@ -2120,10 +2131,12 @@ def test_task_callback_on_crew():
         execute.return_value = "ok"
         crew.kickoff()
 
-        assert list_ideas.callback is not None
+        assert list_ideas.callback is mock_callback
         mock_callback.assert_called_once()
         args, _ = mock_callback.call_args
         assert isinstance(args[0], TaskOutput)
+        assert args[0].raw == "ok"
+        assert args[0].agent == "Researcher"
 
 
 def test_task_callback_both_on_task_and_crew():
@@ -2156,7 +2169,6 @@ def test_task_callback_both_on_task_and_crew():
         execute.return_value = "ok"
         crew.kickoff()
 
-        assert list_ideas.callback is not None
         mock_callback_on_task.assert_called_once_with(list_ideas.output)
         mock_callback_on_crew.assert_called_once_with(list_ideas.output)
 
@@ -2190,7 +2202,7 @@ def test_task_same_callback_both_on_task_and_crew():
         execute.return_value = "ok"
         crew.kickoff()
 
-        assert list_ideas.callback is not None
+        assert list_ideas.callback is mock_callback
         mock_callback.assert_called_once_with(list_ideas.output)
 
 
@@ -2486,8 +2498,9 @@ def test_using_memory():
         memory=True,
     )
 
-    crew.kickoff()
-    assert crew._memory is not None
+    result = crew.kickoff()
+    assert isinstance(crew._memory, Memory)
+    assert "**Topic**: Basic Addition" in result.raw
 
 
 @pytest.mark.vcr()
@@ -2577,63 +2590,13 @@ def test_memory_events_are_emitted():
         )
 
     assert success, f"Timeout waiting for memory events. Got: {dict(events)}"
-    assert len(events["MemoryRetrievalStartedEvent"]) >= 1
-    assert len(events["MemoryRetrievalCompletedEvent"]) >= 1
-    assert len(events["MemoryQueryStartedEvent"]) >= 1
-    assert len(events["MemoryQueryCompletedEvent"]) >= 1
-
-
-@pytest.mark.vcr()
-def test_using_memory_with_remember():
-    """With memory=True, crew uses unified memory and kickoff runs successfully."""
-    math_researcher = Agent(
-        role="Researcher",
-        goal="You research about math.",
-        backstory="You're an expert in research and you love to learn new things.",
-        allow_delegation=False,
-    )
-
-    task1 = Task(
-        description="Research a topic to teach a kid aged 6 about math.",
-        expected_output="A topic, explanation, angle, and examples.",
-        agent=math_researcher,
-    )
-
-    crew = Crew(
-        agents=[math_researcher],
-        tasks=[task1],
-        memory=True,
-    )
-
-    crew.kickoff()
-    assert crew._memory is not None
-
-
-@pytest.mark.vcr()
-def test_memory_enabled_creates_unified_memory():
-    """With unified memory, memory=True creates _memory and kickoff runs."""
-    math_researcher = Agent(
-        role="Researcher",
-        goal="You research about math.",
-        backstory="You're an expert in research and you love to learn new things.",
-        allow_delegation=False,
-        verbose=True,
-    )
-
-    task1 = Task(
-        description="Research a topic to teach a kid aged 6 about math.",
-        expected_output="A topic, explanation, angle, and examples.",
-        agent=math_researcher,
-    )
-
-    crew = Crew(
-        agents=[math_researcher],
-        tasks=[task1],
-        memory=True,
-    )
-
-    crew.kickoff()
-    assert crew._memory is not None
+    task_description = "Research a topic to teach a kid aged 6 about math."
+    query_started = events["MemoryQueryStartedEvent"][0]
+    assert (query_started.query, query_started.limit) == (task_description, 5)
+    assert events["MemoryQueryCompletedEvent"][0].query == task_description
+    retrieval_started = events["MemoryRetrievalStartedEvent"][0]
+    assert retrieval_started.task_name == task_description
+    assert retrieval_started.agent_role == "Researcher"
 
 
 @pytest.mark.vcr()
@@ -2679,32 +2642,6 @@ def test_memory_remember_called_after_task():
 
 
 @pytest.mark.vcr()
-def test_using_memory_recall_and_save():
-    """With memory=True, crew uses unified memory for recall and save."""
-    math_researcher = Agent(
-        role="Researcher",
-        goal="You research about math.",
-        backstory="You're an expert in research and you love to learn new things.",
-        allow_delegation=False,
-    )
-
-    task1 = Task(
-        description="Research a topic to teach a kid aged 6 about math.",
-        expected_output="A topic, explanation, angle, and examples.",
-        agent=math_researcher,
-    )
-
-    crew = Crew(
-        agents=[math_researcher],
-        tasks=[task1],
-        memory=True,
-    )
-
-    crew.kickoff()
-    assert crew._memory is not None
-
-
-@pytest.mark.vcr()
 def test_disabled_memory():
     """With memory=False, crew has no _memory and kickoff runs without memory."""
     math_researcher = Agent(
@@ -2743,7 +2680,10 @@ def test_crew_log_file_output(tmp_path, researcher):
 
     crew = Crew(agents=[researcher], tasks=tasks, output_log_file=str(test_file))
     crew.kickoff()
-    assert test_file.exists()
+    assert [line.split(": ", 1)[1] for line in test_file.read_text().splitlines()] == [
+        'task_name="None", task="Say Hi", agent="Researcher", status="started"',
+        'task_name="None", task="Say Hi", agent="Researcher", status="completed", output="Hi"',
+    ]
 
 
 @pytest.mark.vcr()
@@ -2769,10 +2709,11 @@ def test_crew_output_file_end_to_end(tmp_path):
         tasks=[task],
         process=Process.sequential,
     )
-    crew.kickoff(inputs={"topic": "AI"})
+    result = crew.kickoff(inputs={"topic": "AI"})
 
     expected_file = tmp_path / "output_AI.txt"
-    assert expected_file.exists(), f"Output file {expected_file} was not created"
+    assert result.raw.startswith("**Advantages of AI**")
+    assert expected_file.read_text() == result.raw
 
 
 def test_crew_output_file_validation_failures():
@@ -3280,12 +3221,15 @@ def test_crew_task_db_init():
 
         crew.kickoff()
 
-        try:
-            db_handler = TaskOutputStorageHandler()
-            db_handler.load()
-            assert True  # If we reach this point, no exception was raised
-        except Exception as e:
-            pytest.fail(f"An exception was raised: {e!s}")
+    stored = TaskOutputStorageHandler().load()
+    assert len(stored) == 1
+    assert stored[0]["task_id"] == str(task.id)
+    assert stored[0]["expected_output"] == "A 1 paragraph article about AI."
+    assert stored[0]["output"]["raw"] == (
+        "Artificial Intelligence (AI) is revolutionizing healthcare by enhancing "
+        "diagnostic accuracy, personalizing treatment plans, and streamlining "
+        "administrative tasks."
+    )
 
 
 @pytest.mark.vcr()
@@ -4027,8 +3971,8 @@ def test_hierarchical_verbose_manager_agent(researcher, writer):
     with patch.object(Task, "execute_sync", return_value=mock_task_output):
         crew.kickoff()
 
-    assert crew.manager_agent is not None
-    assert crew.manager_agent.verbose
+    assert crew.manager_agent.role == "Crew Manager"
+    assert crew.manager_agent.verbose is True
 
 
 def test_hierarchical_verbose_false_manager_agent(researcher, writer):
@@ -4053,8 +3997,8 @@ def test_hierarchical_verbose_false_manager_agent(researcher, writer):
     with patch.object(Task, "execute_sync", return_value=mock_task_output):
         crew.kickoff()
 
-    assert crew.manager_agent is not None
-    assert not crew.manager_agent.verbose
+    assert crew.manager_agent.role == "Crew Manager"
+    assert crew.manager_agent.verbose is False
 
 
 def test_fetch_inputs():
@@ -4336,9 +4280,9 @@ def test_multimodal_agent_live_image_analysis():
         }
     )
 
-    assert isinstance(result.raw, str)
-    assert len(result.raw) > 100
-    assert "error" not in result.raw.lower()  # No error messages in response
+    assert result.raw.startswith(
+        "The image is an aerial view of Lower Manhattan in New York City."
+    )
 
 
 @pytest.mark.vcr()

@@ -45,6 +45,7 @@ from crewai.flow.flow_context import (
 )
 from crewai.flow.persistence import SQLiteFlowPersistence, persist
 from crewai.llms.base_llm import BaseLLM
+from crewai.project.json_loader import JSONProjectError
 from crewai.flow.conversation import (
     append_message,
     get_conversation_messages,
@@ -113,8 +114,12 @@ class TestIntentPerTurn:
     def test_prepare_clears_stale_last_intent(self) -> None:
         flow = SimpleChatFlow()
         flow._state = ChatState(last_intent="ORDER", messages=[])
+        prepare_conversational_turn(flow, user_message="   ")
+        assert flow.state.last_intent == "ORDER"
+
         prepare_conversational_turn(flow, user_message="hello")
         assert flow.state.last_intent is None
+        assert flow.state.messages == [{"role": "user", "content": "hello"}]
 
 
 class TestClassifyIntent:
@@ -1140,35 +1145,41 @@ class TestConversationalFlow:
             raise AssertionError("Flow.chat() should reject regular flows")
 
     def test_defer_trace_finalization_skips_per_turn_finalize(self) -> None:
-        """``defer_trace_finalization = True`` suppresses per-turn ``finalize_batch``.
+        """``defer_trace_finalization = True`` suppresses per-turn ``flow_finished``.
 
-        Without deferral, each ``handle_turn()`` ends with a trace-batch
-        finalize. With deferral on, the framework defers until
-        ``finalize_session_traces()`` is called at session end.
+        Without deferral, each ``handle_turn()`` ends its own trace. With
+        deferral on, the framework defers until ``finalize_session_traces()``
+        is called at session end.
         """
+        from crewai.events.types.flow_events import FlowFinishedEvent
 
-        @ConversationConfig()
-        class DeferredFlow(ConversationalFlow):
-            def route_turn(self, context: dict[str, Any]) -> str | None:
-                return "work"
+        def finished_per_turn(defer: bool) -> list[str]:
+            @ConversationConfig(defer_trace_finalization=defer)
+            class TurnFlow(ConversationalFlow):
+                def route_turn(self, context: dict[str, Any]) -> str | None:
+                    return "work"
 
-            @listen("work")
-            def do_work(self) -> str:
-                self.append_assistant_message("worked")
-                return "worked"
+                @listen("work")
+                def do_work(self) -> str:
+                    self.append_assistant_message("worked")
+                    return "worked"
 
-        flow = DeferredFlow()
-        flow.defer_trace_finalization = True
+            flow = TurnFlow()
+            finished: list[str] = []
+            with crewai_event_bus.scoped_handlers():
 
-        listener = TraceCollectionListener()
-        with patch.object(listener.batch_manager, "finalize_batch") as mock_finalize:
-            flow.handle_turn("turn 1")
-            flow.handle_turn("turn 2")
-            flow.handle_turn("turn 3")
+                @crewai_event_bus.on(FlowFinishedEvent)
+                def capture(_: Any, event: FlowFinishedEvent) -> None:
+                    finished.append(event.flow_name)
 
-        assert mock_finalize.call_count == 0, (
-            "defer_trace_finalization=True must skip per-turn finalize"
-        )
+                flow.handle_turn("turn 1")
+                flow.handle_turn("turn 2")
+                flow.handle_turn("turn 3")
+                crewai_event_bus.flush()
+            return finished
+
+        assert finished_per_turn(defer=True) == []
+        assert finished_per_turn(defer=False) == ["TurnFlow", "TurnFlow", "TurnFlow"]
 
     def test_deferred_conversation_emits_one_flow_started(self) -> None:
         """Deferred conversational sessions emit one flow_started for the session."""
@@ -1422,34 +1433,36 @@ class TestConversationalFlow:
         from crewai.events.types.flow_events import FlowFinishedEvent
         from crewai.flow.async_feedback.types import PendingFeedbackContext
 
-        class DeferredResumeFlow(Flow[ChatState]):
-            defer_trace_finalization = True
+        def finished_on_resume(defer: bool) -> list[str]:
+            class ResumeFlow(Flow[ChatState]):
+                defer_trace_finalization = defer
 
-            @start()
-            def begin(self) -> str:
-                return "started"
+                @start()
+                def begin(self) -> str:
+                    return "started"
 
-        flow = DeferredResumeFlow()
-        flow._pending_feedback_context = PendingFeedbackContext(
-            flow_id=flow.flow_id,
-            flow_class="DeferredResumeFlow",
-            method_name="begin",
-            method_output="started",
-            message="Review",
-        )
+            flow = ResumeFlow()
+            flow._pending_feedback_context = PendingFeedbackContext(
+                flow_id=flow.flow_id,
+                flow_class="ResumeFlow",
+                method_name="begin",
+                method_output="started",
+                message="Review",
+            )
 
-        finished_events: list[FlowFinishedEvent] = []
+            finished: list[str] = []
+            with crewai_event_bus.scoped_handlers():
 
-        with crewai_event_bus.scoped_handlers():
+                @crewai_event_bus.on(FlowFinishedEvent)
+                def capture(_: Any, event: FlowFinishedEvent) -> None:
+                    finished.append(event.flow_name)
 
-            @crewai_event_bus.on(FlowFinishedEvent)
-            def capture(_: Any, event: FlowFinishedEvent) -> None:
-                finished_events.append(event)
+                flow.resume("approved")
+                crewai_event_bus.flush()
+            return finished
 
-            flow.resume("approved")
-            crewai_event_bus.flush()
-
-        assert finished_events == []
+        assert finished_on_resume(defer=True) == []
+        assert finished_on_resume(defer=False) == ["ResumeFlow"]
 
     def test_finalize_session_traces_restores_event_scope(self, capsys) -> None:
         """No ``empty scope stack`` warning when deferred ``flow_finished`` fires.
@@ -1871,6 +1884,17 @@ class TestFlowTracingWhenSuppressed:
         assert started == []
         assert finished == []
 
+        class LoudFlow(Flow[ChatState]):
+            @start()
+            def begin(self) -> str:
+                return "ok"
+
+        with patch.object(crewai_event_bus, "emit", side_effect=track_emit):
+            LoudFlow().kickoff()
+
+        assert started == ["begin"]
+        assert finished == ["begin"]
+
     def test_llm_action_inside_flow_claims_flow_trace_batch(self) -> None:
         listener = TraceCollectionListener()
         listener.batch_manager.current_batch = None
@@ -2035,11 +2059,11 @@ class TestDeferredFlowLifecycleEvents:
         listener.batch_manager.current_batch = TraceBatch()
         listener.batch_manager.defer_session_finalization = True
 
-        with patch.object(listener.batch_manager, "finalize_batch") as mock_finalize:
-            if listener.batch_manager.is_batch_initialized():
-                if not listener.batch_manager.defer_session_finalization:
-                    listener.batch_manager.finalize_batch()
-            mock_finalize.assert_not_called()
+        assert listener.batch_manager.is_batch_initialized() is True
+        assert listener._should_defer_session_finalization() is True
+
+        listener.batch_manager.defer_session_finalization = False
+        assert listener._should_defer_session_finalization() is False
 
     def test_deferred_flow_kickoff_leaves_legacy_trace_manager_untouched(
         self,
@@ -2102,15 +2126,12 @@ class TestNestedCrewTracing:
 
         listener = TraceCollectionListener()
         listener.batch_manager.batch_owner_type = "crew"
+        listener.batch_manager.current_batch = None
 
+        assert listener._nested_in_flow_execution() is False
         token = current_flow_id.set("parent-flow-id")
         try:
-            with patch.object(listener.batch_manager, "finalize_batch") as mock_finalize:
-                if listener._nested_in_flow_execution():
-                    pass
-                elif listener.batch_manager.batch_owner_type == "crew":
-                    listener.batch_manager.finalize_batch()
-                mock_finalize.assert_not_called()
+            assert listener._nested_in_flow_execution() is True
         finally:
             current_flow_id.reset(token)
 
@@ -2126,12 +2147,10 @@ class TestNestedCrewTracing:
             execution_metadata={"execution_type": "flow", "flow_name": "Demo"},
         )
 
-        with patch.object(listener.batch_manager, "finalize_batch") as mock_finalize:
-            if listener._nested_in_flow_execution():
-                pass
-            elif listener.batch_manager.batch_owner_type == "crew":
-                listener.batch_manager.finalize_batch()
-            mock_finalize.assert_not_called()
+        assert listener._nested_in_flow_execution() is True
+
+        listener.batch_manager.batch_owner_type = None
+        assert listener._nested_in_flow_execution() is True
 
     def test_lazy_flow_batch_from_context_preserves_deferred_parent(self) -> None:
         from crewai.events.listeners.tracing.trace_listener import (
@@ -2650,7 +2669,7 @@ class TestDeclaredRouterResponseFormat:
         )
 
         # Resolution is lazy: the declaration loads, the import is refused.
-        with pytest.raises(Exception, match="inside the project root"):
+        with pytest.raises(JSONProjectError, match="inside the project root"):
             _ = flow._conversation_config
 
     def test_a_ref_without_a_dot_is_rejected_at_load(self) -> None:
@@ -2864,9 +2883,14 @@ class TestDeclaredConversationalState:
     def test_an_unbuildable_declared_model_still_gets_the_chat_shape(self) -> None:
         """A bad ref fell back to a plain dict, so the turn died on `state.id`."""
         flow = self._flow({"type": "pydantic", "ref": "no.such.module:Nope"})
+        flow._conversation_config.llm = _ScriptedLLM(["Hello."])
 
         assert isinstance(flow.state, ConversationState)
-        assert flow.state.id
+        assert flow.handle_turn("hi") == "Hello."
+        assert [(m.role, m.content) for m in flow.state.messages] == [
+            ("user", "hi"),
+            ("assistant", "Hello."),
+        ]
 
     def test_declared_state_still_runs_a_turn(self) -> None:
         flow = self._flow(

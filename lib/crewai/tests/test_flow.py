@@ -826,7 +826,7 @@ def test_flow_without_trigger_payload():
 
     flow.kickoff(inputs={"other_data": "some value"})
 
-    assert captured_payload[0] is None
+    assert captured_payload == [None]
 
 
 def test_flow_trigger_payload_with_structured_state():
@@ -1726,8 +1726,9 @@ def test_flow_copy_state_with_unpickleable_objects():
     flow._state.lock = threading.RLock()
 
     copied_state = flow._copy_state()
+    assert copied_state is not flow._state
     assert copied_state.counter == 0
-    assert copied_state.lock is not None
+    assert copied_state.lock is flow._state.lock
 
 
 def test_flow_copy_state_with_nested_unpickleable_objects():

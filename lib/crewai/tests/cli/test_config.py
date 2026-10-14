@@ -127,7 +127,7 @@ class TestSettings(unittest.TestCase):
         with self.config_path.open("r") as f:
             saved_data = json.load(f)
 
-        self.assertIsNone(saved_data.get("tool_repository_username"))
+        self.assertEqual(saved_data, {"tool_repository_username": None})
 
     def test_invalid_json_in_config(self):
         self.config_path.parent.mkdir(parents=True, exist_ok=True)

@@ -57,7 +57,7 @@ class TestLLMHookDecorators:
             pass
 
         hooks = get_before_llm_call_hooks()
-        assert len(hooks) == 1
+        assert hooks == [test_hook]
 
     def test_after_llm_call_decorator_registers_hook(self):
         """Test that @after_llm_call decorator registers the hook."""
@@ -67,7 +67,7 @@ class TestLLMHookDecorators:
             return None
 
         hooks = get_after_llm_call_hooks()
-        assert len(hooks) == 1
+        assert hooks == [test_hook]
 
     def test_decorated_hook_executes_correctly(self):
         """Test that decorated hook executes and modifies behavior."""
@@ -136,7 +136,7 @@ class TestToolHookDecorators:
             return None
 
         hooks = get_before_tool_call_hooks()
-        assert len(hooks) == 1
+        assert hooks == [test_hook]
 
     def test_after_tool_call_decorator_registers_hook(self):
         """Test that @after_tool_call decorator registers the hook."""
@@ -146,7 +146,7 @@ class TestToolHookDecorators:
             return None
 
         hooks = get_after_tool_call_hooks()
-        assert len(hooks) == 1
+        assert hooks == [test_hook]
 
     def test_before_tool_call_with_tool_filter(self):
         """Test that tool filter works correctly."""
@@ -329,8 +329,8 @@ class TestMultipleDecorators:
         before_hooks = get_before_llm_call_hooks()
         after_hooks = get_after_llm_call_hooks()
 
-        assert len(before_hooks) == 2
-        assert len(after_hooks) == 1
+        assert before_hooks == [hook1, hook2]
+        assert after_hooks == [hook3]
 
     def test_decorator_and_manual_registration_work_together(self):
         """Test that decorators and manual registration can be mixed."""
@@ -347,4 +347,4 @@ class TestMultipleDecorators:
 
         hooks = get_before_tool_call_hooks()
 
-        assert len(hooks) == 2
+        assert hooks == [decorated_hook, manual_hook]

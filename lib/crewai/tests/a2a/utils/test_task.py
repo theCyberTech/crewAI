@@ -123,10 +123,14 @@ class TestCancellableDecorator:
         cache = caches.get("default")
 
         @cancellable
-        async def quick_func(context: RequestContext) -> str:
-            return "done"
+        async def slow_func(context: RequestContext) -> str:
+            await asyncio.sleep(1.0)
+            return "should not reach"
 
-        await quick_func(mock_context)
+        await cache.set(f"cancel:{mock_context.task_id}", True)
+
+        with pytest.raises(asyncio.CancelledError):
+            await slow_func(mock_context)
 
         flag = await cache.get(f"cancel:{mock_context.task_id}")
         assert flag is None

@@ -20,21 +20,19 @@ class TestTokenManager(unittest.TestCase):
         mock_get_key.return_value = Fernet.generate_key()
         self.token_manager = TokenManager()
 
-    @patch("crewai_core.token_manager.TokenManager._read_secure_file")
-    @patch("crewai_core.token_manager.TokenManager._get_or_create_key")
-    def test_get_or_create_key_existing(
-        self,
-        mock_get_or_create: unittest.mock.MagicMock,
-        mock_read: unittest.mock.MagicMock,
-    ) -> None:
+    def test_get_or_create_key_existing(self) -> None:
         """Test that existing key is returned when present."""
-        mock_key = Fernet.generate_key()
-        mock_get_or_create.return_value = mock_key
+        existing_key = Fernet.generate_key()
 
-        token_manager = TokenManager()
-        result = token_manager.key
+        with (
+            patch.object(self.token_manager, "_read_secure_file", return_value=existing_key) as mock_read,
+            patch.object(self.token_manager, "_atomic_create_secure_file") as mock_atomic_create,
+        ):
+            result = self.token_manager._get_or_create_key()
 
-        self.assertEqual(result, mock_key)
+        self.assertEqual(result, existing_key)
+        mock_read.assert_called_once_with("secret.key")
+        mock_atomic_create.assert_not_called()
 
     def test_get_or_create_key_new(self) -> None:
         """Test that new key is created when none exists."""
@@ -228,8 +226,8 @@ class TestAtomicFileOperations(unittest.TestCase):
 
         tm._atomic_write_secure_file("test.txt", b"content")
 
-        temp_files = list(Path(self.temp_dir).glob(".test.txt.*"))
-        self.assertEqual(len(temp_files), 0)
+        remaining = [p.name for p in Path(self.temp_dir).iterdir()]
+        self.assertEqual(remaining, ["test.txt"])
 
     @patch("crewai_core.token_manager.TokenManager._get_or_create_key")
     def test_read_secure_file_exists(
@@ -280,8 +278,13 @@ class TestAtomicFileOperations(unittest.TestCase):
         """Test deleting non-existent file doesn't raise."""
         mock_get_key.return_value = Fernet.generate_key()
         tm = TokenManager()
+        other = Path(self.temp_dir) / "other.txt"
+        other.write_bytes(b"content")
 
         tm._delete_secure_file("nonexistent.txt")
+
+        self.assertEqual(other.read_bytes(), b"content")
+        self.assertEqual([p.name for p in Path(self.temp_dir).iterdir()], ["other.txt"])
 
 
 if __name__ == "__main__":

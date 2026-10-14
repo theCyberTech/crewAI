@@ -58,7 +58,12 @@ def test_unregister_removes_factory():
 
 
 def test_unregister_unknown_provider_is_noop():
+    sentinel = object()
+    factory.register_rag_client_factory("custom", lambda config: sentinel)
+
     factory.unregister_rag_client_factory("never-registered")
+
+    assert factory.create_client(SimpleNamespace(provider="custom")) is sentinel
 
 
 def test_unknown_provider_still_raises():

@@ -124,15 +124,18 @@ class TestStringToCallable:
         assert string_to_callable(print) is print
 
     def test_roundtrippable_callable_no_warning(self, recwarn: pytest.WarningsChecker) -> None:
-        string_to_callable(module_level_function)
+        result = string_to_callable(module_level_function)
         our_warnings = [
             w for w in recwarn if "cannot be serialized" in str(w.message)
         ]
         assert our_warnings == []
+        assert result is module_level_function
 
     def test_non_roundtrippable_warns(self) -> None:
+        fn = functools.partial(print)
         with pytest.warns(UserWarning, match="cannot be serialized"):
-            string_to_callable(functools.partial(print))
+            result = string_to_callable(fn)
+        assert result is fn
 
     def test_non_callable_non_string_raises(self) -> None:
         with pytest.raises(ValueError, match="Expected a callable"):

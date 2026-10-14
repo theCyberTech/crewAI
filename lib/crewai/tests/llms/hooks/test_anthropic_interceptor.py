@@ -74,19 +74,15 @@ class TestAnthropicInterceptorIntegration:
             messages=[{"role": "user", "content": "Say 'Hello World' and nothing else"}]
         )
 
-        for request in interceptor.outbound_calls:
-            assert "X-Anthropic-Interceptor" in request.headers
-            assert request.headers["X-Anthropic-Interceptor"] == "anthropic-test-value"
-            assert "X-Request-ID" in request.headers
-            assert request.headers["X-Request-ID"] == "test-request-456"
+        assert len(interceptor.outbound_calls) == 1
+        request = interceptor.outbound_calls[0]
+        assert request.headers["X-Anthropic-Interceptor"] == "anthropic-test-value"
+        assert request.headers["X-Request-ID"] == "test-request-456"
 
-        for response in interceptor.inbound_calls:
-            assert "X-Response-Tracked" in response.headers
-            assert response.headers["X-Response-Tracked"] == "true"
+        assert len(interceptor.inbound_calls) == 1
+        assert interceptor.inbound_calls[0].headers["X-Response-Tracked"] == "true"
 
-        assert result is not None
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == "Hello World"
 
     def test_anthropic_without_interceptor_works(self) -> None:
         """Test that Anthropic LLM works without interceptor."""
@@ -168,18 +164,10 @@ class TestAnthropicLoggingInterceptor:
 
         result = llm.call(messages=[{"role": "user", "content": "Count from 1 to 3"}])
 
-        # Verify URL points to Anthropic API
-        for url in interceptor.request_urls:
-            assert "anthropic" in url.lower() or "api" in url.lower()
-
-        for method in interceptor.request_methods:
-            assert method == "POST"
-
-        for status_code in interceptor.response_status_codes:
-            assert 200 <= status_code < 300
-
-
-        assert result is not None
+        assert interceptor.request_urls == ["https://api.anthropic.com/v1/messages"]
+        assert interceptor.request_methods == ["POST"]
+        assert interceptor.response_status_codes == [200]
+        assert result == "Here's counting from 1 to 3:\n\n1\n2\n3"
 
 
 class AnthropicHeaderInterceptor(BaseInterceptor[httpx.Request, httpx.Response]):
@@ -259,10 +247,7 @@ class TestAnthropicHeaderInterceptor:
             messages=[{"role": "user", "content": "Reply with just the word: SUCCESS"}]
         )
 
-        assert result is not None
-        assert len(result) > 0
-
-        assert llm.interceptor is interceptor
+        assert result == "SUCCESS"
 
 
 class TestMixedProviderInterceptors:

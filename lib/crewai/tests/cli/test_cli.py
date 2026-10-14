@@ -222,7 +222,8 @@ def test_reset_flow_all_memories(mock_get_flows, mock_flow, runner):
 def test_reset_flow_knowledge_no_effect(mock_get_flows, mock_flow, runner):
     result = runner.invoke(reset_memories, ["--knowledge"])
     mock_flow.memory.reset.assert_not_called()
-    assert "[Flow (TestFlow)]" not in result.output
+    assert result.exit_code == 0
+    assert result.output == ""
 
 
 def test_reset_no_crew_or_flow_found(runner):

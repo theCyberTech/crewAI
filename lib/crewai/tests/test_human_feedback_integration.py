@@ -14,6 +14,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import BaseModel
 
+from crewai.events.event_bus import crewai_event_bus
+from crewai.events.types.flow_events import (
+    HumanFeedbackReceivedEvent,
+    HumanFeedbackRequestedEvent,
+)
 from crewai.flow import Flow, HumanFeedbackResult, human_feedback, listen, or_, start
 from crewai.flow.flow import FlowState
 
@@ -683,19 +688,36 @@ class TestEventEmission:
                 return "content"
 
         flow = EventFlow()
+        requested: list[HumanFeedbackRequestedEvent] = []
+        received: list[HumanFeedbackReceivedEvent] = []
 
-        # We can't easily capture events in tests, but we can verify
-        with (
-            patch.object(
-                event_listener.formatter, "pause_live_updates", return_value=None
-            ),
-            patch.object(
-                event_listener.formatter, "resume_live_updates", return_value=None
-            ),
-        ):
-            flow.kickoff()
+        with crewai_event_bus.scoped_handlers():
 
-        assert flow.last_human_feedback is not None
+            @crewai_event_bus.on(HumanFeedbackRequestedEvent)
+            def on_requested(_source, event):
+                requested.append(event)
+
+            @crewai_event_bus.on(HumanFeedbackReceivedEvent)
+            def on_received(_source, event):
+                received.append(event)
+
+            with (
+                patch.object(
+                    event_listener.formatter, "pause_live_updates", return_value=None
+                ),
+                patch.object(
+                    event_listener.formatter, "resume_live_updates", return_value=None
+                ),
+            ):
+                flow.kickoff()
+            crewai_event_bus.flush()
+
+        assert [(e.method_name, e.output, e.message, e.emit) for e in requested] == [
+            ("review", "content", "Review:", None)
+        ]
+        assert [(e.method_name, e.feedback) for e in received] == [
+            ("review", "test feedback")
+        ]
 
 
 class TestEdgeCases:
@@ -806,11 +828,10 @@ class TestLLMConfigPreservation:
         from crewai.flow.human_feedback import _serialize_llm_for_context
         from crewai.llm import LLM
 
-        llm = LLM(model="gpt-4o-mini")
+        llm = LLM(model="gpt-4o-mini", api_key="sk-secret-key")
 
         serialized = _serialize_llm_for_context(llm)
-        assert isinstance(serialized, dict)
-        assert "api_key" not in serialized
+        assert serialized == {"model": "openai/gpt-4o-mini"}
 
     def test_deserialize_round_trip_preserves_config(self):
         """Test that serialize → deserialize round-trip preserves all config."""
@@ -829,10 +850,9 @@ class TestLLMConfigPreservation:
         serialized = _serialize_llm_for_context(original)
         reconstructed = _deserialize_llm_from_context(serialized)
 
-        assert reconstructed is not None
-        assert reconstructed.model == original.model
-        assert reconstructed.temperature == original.temperature
-        assert reconstructed.base_url == original.base_url
+        assert reconstructed.model == "gpt-4o-mini"
+        assert reconstructed.temperature == 0.42
+        assert reconstructed.base_url == "https://custom.example.com/v1"
 
     def test_deserialize_handles_legacy_string_format(self):
         """Test backward compat: plain string still reconstructs an LLM."""

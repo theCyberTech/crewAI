@@ -107,9 +107,10 @@ class TestOpenAIMultimodalIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == (
+            "The graph illustrates a steady increase in revenue over time from 2020 "
+            "to 2024, starting at $100 million and reaching $300 million."
+        )
 
 
 class TestOpenAIO4MiniMultimodalIntegration:
@@ -129,9 +130,10 @@ class TestOpenAIO4MiniMultimodalIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == (
+            "A line chart showing steady revenue growth from $100 M in 2020 to $300 "
+            "M in 2024."
+        )
 
 
 class TestOpenAIGPT41MiniMultimodalIntegration:
@@ -151,9 +153,10 @@ class TestOpenAIGPT41MiniMultimodalIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == (
+            "The image shows a line graph illustrating a steady increase in revenue "
+            "from $100M in 2020 to $300M in 2024."
+        )
 
 
 class TestOpenAIGPT5MultimodalIntegration:
@@ -173,9 +176,10 @@ class TestOpenAIGPT5MultimodalIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == (
+            "A line chart shows revenue rising steadily from $100M in 2020 to $300M "
+            "in 2024."
+        )
 
 
 class TestOpenAIGPT5MiniMultimodalIntegration:
@@ -195,9 +199,10 @@ class TestOpenAIGPT5MiniMultimodalIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == (
+            'A line chart titled "Revenue Over Time" showing steady growth from '
+            "$100M in 2020 to $300M in 2024."
+        )
 
 
 class TestOpenAIGPT5NanoMultimodalIntegration:
@@ -217,9 +222,10 @@ class TestOpenAIGPT5NanoMultimodalIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == (
+            "A straight line showing revenue growing steadily from about $100M in "
+            "2020 to $300M in 2024."
+        )
 
 
 class TestAnthropicMultimodalIntegration:
@@ -239,9 +245,9 @@ class TestAnthropicMultimodalIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == (
+            "The graph shows a steady, linear increase in revenue from 2020 to 2024."
+        )
 
     @pytest.mark.vcr()
     def test_analyze_pdf(self) -> None:
@@ -257,9 +263,7 @@ class TestAnthropicMultimodalIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == "Invoice"
 
 
 class TestAzureMultimodalIntegration:
@@ -279,9 +283,10 @@ class TestAzureMultimodalIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == (
+            "The graph shows a steady linear increase in revenue from $100M in 2020 "
+            "to $300M in 2024."
+        )
 
 
 class TestBedrockMultimodalIntegration:
@@ -301,9 +306,10 @@ class TestBedrockMultimodalIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == (
+            "A line chart showing steady linear revenue growth from $100M in 2020 to "
+            "$300M in 2024."
+        )
 
     @pytest.mark.vcr()
     def test_analyze_pdf(self) -> None:
@@ -319,9 +325,7 @@ class TestBedrockMultimodalIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == "Blank"
 
 
 class TestGeminiMultimodalIntegration:
@@ -341,9 +345,10 @@ class TestGeminiMultimodalIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == (
+            "The line graph shows a linear increase in revenue from $100M in 2020 to "
+            "$300M in 2024."
+        )
 
     @pytest.mark.vcr()
     def test_analyze_text_file(self, test_text_bytes: bytes) -> None:
@@ -359,9 +364,12 @@ class TestGeminiMultimodalIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == (
+            "The text file outlines guidelines for providing effective feedback, "
+            "emphasizing clarity, specificity, a balance of positive and "
+            "constructive criticism, respect, objectivity, actionable suggestions, "
+            "and careful proofreading.\n"
+        )
 
     @pytest.mark.vcr()
     def test_analyze_video_file(self, test_video_bytes: bytes) -> None:
@@ -377,9 +385,10 @@ class TestGeminiMultimodalIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == (
+            "A white square moves from the left side of a blue background to the "
+            "center and then to the right side.\n"
+        )
 
     @pytest.mark.vcr()
     def test_analyze_audio_file(self, test_audio_bytes: bytes) -> None:
@@ -395,9 +404,7 @@ class TestGeminiMultimodalIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == "I hear a ringtone.\n"
 
 
 class TestLiteLLMMultimodalIntegration:
@@ -417,9 +424,10 @@ class TestLiteLLMMultimodalIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == (
+            "The graph depicts a steady increase in revenue over time from 2020 to "
+            "2024, rising from around $100 million to $300 million."
+        )
 
     @pytest.mark.vcr()
     def test_describe_image_claude(self, test_image_bytes: bytes) -> None:
@@ -435,9 +443,9 @@ class TestLiteLLMMultimodalIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == (
+            "The graph shows a steady, linear increase in revenue from 2020 to 2024."
+        )
 
 
 class TestMultipleFilesIntegration:
@@ -460,9 +468,7 @@ class TestMultipleFilesIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert "2" in response or "two" in response.lower()
+        assert response == "2"
 
     @pytest.mark.vcr()
     def test_mixed_content_anthropic(self, test_image_bytes: bytes) -> None:
@@ -481,9 +487,11 @@ class TestMultipleFilesIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == (
+            "You've sent me two types of files:\n\n1. An image (a line graph showing "
+            '"Revenue Over Time")\n2. A PDF document (which appears to be a blank or '
+            "white page)"
+        )
 
 
 class TestGenericFileIntegration:
@@ -503,9 +511,10 @@ class TestGenericFileIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == (
+            "The graph shows a steady increase in revenue from 2020 to 2024, rising "
+            "from $100 million to $300 million."
+        )
 
     @pytest.mark.vcr()
     def test_generic_file_pdf_anthropic(self) -> None:
@@ -521,9 +530,7 @@ class TestGenericFileIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == "PDF"
 
     @pytest.mark.vcr()
     def test_generic_file_text_gemini(self, test_text_bytes: bytes) -> None:
@@ -539,9 +546,12 @@ class TestGenericFileIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == (
+            "Effective review feedback should be clear, specific, balanced, "
+            "respectful, and constructive, focusing on behaviors and outcomes with "
+            "examples, objective criteria, and suggested next steps, ensuring it is "
+            "proofread for clarity.\n"
+        )
 
     @pytest.mark.vcr()
     def test_generic_file_mixed_types(self, test_image_bytes: bytes) -> None:
@@ -560,9 +570,10 @@ class TestGenericFileIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == (
+            "You sent two files:\n1. A PNG image (the revenue graph)\n2. A PDF "
+            "document (a blank white page)"
+        )
 
 
 def _build_multimodal_message_with_upload(
@@ -671,9 +682,10 @@ class TestAnthropicFileUploadIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == (
+            "The graph shows a steady, linear increase in revenue from 2020 to 2024, "
+            "rising from around $100 to nearly $300."
+        )
 
 
 class TestOpenAIResponsesFileUploadIntegration:
@@ -705,9 +717,11 @@ class TestOpenAIResponsesFileUploadIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == (
+            "The image is a line graph showing a steady increase in revenue over "
+            "time from 2020 to 2024, starting at $100 million and reaching $300 "
+            "million."
+        )
 
     @pytest.mark.vcr()
     def test_describe_image_via_format_api(self, test_image_bytes: bytes) -> None:
@@ -737,9 +751,11 @@ class TestOpenAIResponsesFileUploadIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == (
+            "The image depicts a line graph showing a steady increase in revenue "
+            "from 2020 to 2024, with revenue rising from around $100 million to $300 "
+            "million."
+        )
 
     @pytest.mark.vcr()
     def test_describe_image_via_format_api_with_upload(self, test_image_bytes: bytes) -> None:
@@ -773,6 +789,7 @@ class TestOpenAIResponsesFileUploadIntegration:
 
         response = llm.call(messages)
 
-        assert response
-        assert isinstance(response, str)
-        assert len(response) > 0
+        assert response == (
+            "The line graph illustrates a steady increase in revenue from "
+            "$100 million in 2020 to approximately $300 million by 2024."
+        )

@@ -310,7 +310,10 @@ def test_guardrail_when_an_error_occurs(sample_agent, task_output):
         ),
         pytest.raises(
             Exception,
-            match="Error while validating the task output: Unexpected error",
+            match=(
+                r"Task failed guardrail validation after 0 retries\. "
+                r"Last error: Error while validating the task output: Unexpected error"
+            ),
         ),
     ):
         task = create_smart_task(

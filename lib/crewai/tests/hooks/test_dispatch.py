@@ -216,6 +216,7 @@ class TestTelemetry:
                 events.append(event)
 
             dispatch(InterceptionPoint.PRE_MODEL_CALL, _Ctx())
+            crewai_event_bus.flush()
 
         assert events == []
 

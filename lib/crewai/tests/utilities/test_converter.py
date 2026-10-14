@@ -294,29 +294,37 @@ def test_supports_function_calling_false() -> None:
 def test_create_converter_with_mock_agent() -> None:
     mock_agent = MagicMock()
     mock_agent.get_output_converter.return_value = MagicMock(spec=Converter)
+    llm = Mock()
 
     converter = create_converter(
         agent=mock_agent,
-        llm=Mock(),
+        llm=llm,
         text="Sample",
         model=SimpleModel,
         instructions="Convert",
     )
 
-    assert isinstance(converter, Converter)
-    mock_agent.get_output_converter.assert_called_once()
+    assert converter is mock_agent.get_output_converter.return_value
+    mock_agent.get_output_converter.assert_called_once_with(
+        llm=llm, text="Sample", model=SimpleModel, instructions="Convert"
+    )
 
 
 def test_create_converter_with_custom_converter() -> None:
+    llm = LLM(model="gpt-4o-mini")
     converter = create_converter(
         converter_cls=CustomConverter,
-        llm=LLM(model="gpt-4o-mini"),
+        llm=llm,
         text="Sample",
         model=SimpleModel,
         instructions="Convert",
     )
 
     assert isinstance(converter, CustomConverter)
+    assert converter.llm is llm
+    assert converter.text == "Sample"
+    assert converter.model is SimpleModel
+    assert converter.instructions == "Convert"
 
 
 def test_create_converter_fails_without_agent_or_converter_cls() -> None:

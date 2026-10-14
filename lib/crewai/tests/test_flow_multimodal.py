@@ -112,9 +112,11 @@ class TestFlowMultimodalOpenAI:
         flow = ImageAnalysisFlow()
         result = flow.kickoff(input_files={"chart": image_file})
 
-        assert result
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == (
+            'The file "revenue_chart.png" is a line graph depicting revenue growth '
+            "over time, spanning from the year 2020 to 2024, with revenue values "
+            "ranging from $100 million to $300 million."
+        )
 
     @pytest.mark.vcr()
     def test_flow_with_image_bytes(self, image_bytes: bytes) -> None:
@@ -131,9 +133,11 @@ class TestFlowMultimodalOpenAI:
         flow = ImageAnalysisFlow()
         result = flow.kickoff(input_files={"chart": ImageFile(source=image_bytes)})
 
-        assert result
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == (
+            "The file is a line chart depicting revenue over time, showing a steady "
+            "increase from 2020 to 2024, with revenue measured in millions of "
+            "dollars."
+        )
 
 
 class TestFlowMultimodalAnthropic:
@@ -154,9 +158,10 @@ class TestFlowMultimodalAnthropic:
         flow = ImageAnalysisFlow()
         result = flow.kickoff(input_files={"chart": image_file})
 
-        assert result
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == (
+            "A line graph depicting consistent revenue growth from 2020 to 2024, "
+            "showing a linear upward trend."
+        )
 
     @pytest.mark.vcr()
     def test_flow_with_pdf_file(self, pdf_file: PDFFile) -> None:
@@ -173,9 +178,7 @@ class TestFlowMultimodalAnthropic:
         flow = PDFAnalysisFlow()
         result = flow.kickoff(input_files={"document": pdf_file})
 
-        assert result
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == "A blank white PDF document with no visible content."
 
 
 class TestFlowMultimodalGemini:
@@ -196,9 +199,9 @@ class TestFlowMultimodalGemini:
         flow = ImageAnalysisFlow()
         result = flow.kickoff(input_files={"chart": image_file})
 
-        assert result
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == (
+            "The file is a revenue chart displaying revenue growth from 2020 to 2024."
+        )
 
     @pytest.mark.vcr()
     def test_flow_with_text_file(self, text_file: TextFile) -> None:
@@ -215,9 +218,17 @@ class TestFlowMultimodalGemini:
         flow = TextAnalysisFlow()
         result = flow.kickoff(input_files={"readme": text_file})
 
-        assert result
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == (
+            "Review Guidelines\n\n1. Be clear and concise: Write feedback that is "
+            "easy to understand.\n2. Focus on behavior and outcomes: Describe what "
+            "happened and why it matters.\n3. Be specific: Provide examples to "
+            "support your points.\n4. Balance positives and improvements: Highlight "
+            "strengths and areas to grow.\n5. Be respectful and constructive: Assume "
+            "positive intent and offer solutions.\n6. Use objective criteria: "
+            "Reference goals, metrics, or expectations where possible.\n7. Suggest "
+            "next steps: Recommend actionable ways to improve.\n8. Proofread: Check "
+            "tone, grammar, and clarity before submitting."
+        )
 
     @pytest.mark.vcr()
     def test_flow_with_video_file(self, video_file: VideoFile) -> None:
@@ -234,9 +245,10 @@ class TestFlowMultimodalGemini:
         flow = VideoAnalysisFlow()
         result = flow.kickoff(input_files={"video": video_file})
 
-        assert result
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == (
+            'The file "sample_video.mp4" is a short video showing a white square '
+            "moving from left to right on a blue background."
+        )
 
     @pytest.mark.vcr()
     def test_flow_with_audio_file(self, audio_file: AudioFile) -> None:
@@ -253,9 +265,10 @@ class TestFlowMultimodalGemini:
         flow = AudioAnalysisFlow()
         result = flow.kickoff(input_files={"audio": audio_file})
 
-        assert result
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == (
+            'The file "audio" (sample_audio.wav) is a WAV audio file containing a '
+            "sine wave."
+        )
 
 
 class TestFlowMultimodalMultiStep:
@@ -295,9 +308,7 @@ class TestFlowMultimodalMultiStep:
         flow = MultiStepFlow()
         result = flow.kickoff(input_files={"chart": image_file})
 
-        assert result
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == "Revenue increases from 2020-2024."
 
     @pytest.mark.vcr()
     def test_flow_with_mixed_files(
@@ -318,9 +329,12 @@ class TestFlowMultimodalMultiStep:
             input_files={"chart": image_file, "readme": text_file}
         )
 
-        assert result
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == (
+            'The file "chart" (revenue_chart.png) is a line graph depicting revenue '
+            'growth from 2020 to 2024, and the file "readme" (review_guidelines.txt) '
+            "is a text document outlining best practices for writing effective "
+            "reviews."
+        )
 
 
 class TestFlowMultimodalAsync:
@@ -342,6 +356,8 @@ class TestFlowMultimodalAsync:
         flow = AsyncImageFlow()
         result = await flow.kickoff_async(input_files={"chart": image_file})
 
-        assert result
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == (
+            'The file "revenue_chart.png" is a line graph titled "Revenue Over Time," '
+            "depicting revenue growth in millions of dollars from 2020 to 2024, "
+            "showing a steady upward trend."
+        )

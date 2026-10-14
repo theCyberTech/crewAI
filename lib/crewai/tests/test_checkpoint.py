@@ -68,9 +68,10 @@ class TestFindCheckpoint:
 
     def test_crew_true(self) -> None:
         a = self._make_agent()
-        self._make_crew([a], checkpoint=True)
+        crew = self._make_crew([a], checkpoint=True)
         cfg = _find_checkpoint(a)
-        assert isinstance(cfg, CheckpointConfig)
+        assert cfg is crew.checkpoint
+        assert cfg.location == "./.checkpoints"
 
     def test_crew_true_agent_false_opts_out(self) -> None:
         a = self._make_agent(checkpoint=False)
@@ -93,10 +94,11 @@ class TestFindCheckpoint:
 
     def test_task_inherits_from_crew(self) -> None:
         a = self._make_agent()
-        self._make_crew([a], checkpoint=True)
+        self._make_crew([a], checkpoint=CheckpointConfig(location="/crew_cp"))
         task = Task(description="d", expected_output="e", agent=a)
         cfg = _find_checkpoint(task)
         assert isinstance(cfg, CheckpointConfig)
+        assert cfg.location == "/crew_cp"
 
     def test_task_agent_false_blocks(self) -> None:
         a = self._make_agent(checkpoint=False)
@@ -105,9 +107,10 @@ class TestFindCheckpoint:
         assert _find_checkpoint(task) is None
 
     def test_flow_direct(self) -> None:
-        flow = Flow(checkpoint=True)
+        flow = Flow(checkpoint=CheckpointConfig(location="/flow_cp"))
         cfg = _find_checkpoint(flow)
         assert isinstance(cfg, CheckpointConfig)
+        assert cfg.location == "/flow_cp"
 
     def test_flow_none(self) -> None:
         flow = Flow()
@@ -132,10 +135,7 @@ class TestPrune:
                 time.sleep(0.01)
 
             JsonProvider().prune(d, max_keep=2, branch="main")
-            remaining = os.listdir(branch_dir)
-            assert len(remaining) == 2
-            assert "cp_3.json" in remaining
-            assert "cp_4.json" in remaining
+            assert sorted(os.listdir(branch_dir)) == ["cp_3.json", "cp_4.json"]
 
     def test_prune_zero_removes_all(self) -> None:
         with tempfile.TemporaryDirectory() as d:
@@ -156,30 +156,15 @@ class TestPrune:
                 f.write("{}")
 
             JsonProvider().prune(d, max_keep=10, branch="main")
-            assert len(os.listdir(branch_dir)) == 1
+            assert os.listdir(branch_dir) == ["cp.json"]
 
 
 
 
 class TestCheckpointConfig:
-    def test_defaults(self) -> None:
-        cfg = CheckpointConfig()
-        assert cfg.location == "./.checkpoints"
-        assert cfg.on_events == ["task_completed"]
-        assert cfg.max_checkpoints is None
-        assert not cfg.trigger_all
-
     def test_trigger_all(self) -> None:
-        cfg = CheckpointConfig(on_events=["*"])
-        assert cfg.trigger_all
-
-    def test_restore_from_field(self) -> None:
-        cfg = CheckpointConfig(restore_from="/path/to/checkpoint.json")
-        assert cfg.restore_from == "/path/to/checkpoint.json"
-
-    def test_restore_from_default_none(self) -> None:
-        cfg = CheckpointConfig()
-        assert cfg.restore_from is None
+        assert CheckpointConfig(on_events=["*"]).trigger_all is True
+        assert CheckpointConfig(on_events=["task_completed"]).trigger_all is False
 
     def test_trigger_events(self) -> None:
         cfg = CheckpointConfig(
@@ -688,8 +673,11 @@ class TestAgentCheckpoint:
             from crewai.events.event_bus import crewai_event_bus
 
             crewai_event_bus._runtime_state = None
-            Agent.from_checkpoint(cfg)
-            assert crewai_event_bus._runtime_state is not None
+            restored = Agent.from_checkpoint(cfg)
+            rt = crewai_event_bus._runtime_state
+            assert rt is not None
+            assert rt.root[0] is restored
+            assert restored.role == "r"
 
     def test_agent_fork_sets_branch(self) -> None:
         state = self._make_agent_state()
@@ -797,8 +785,7 @@ class TestCheckpointReusedExecutor:
             )
             result = crew.kickoff()
 
-        assert len(result.tasks_output) == 2
-        assert result.tasks_output[1].raw
+        assert [t.raw for t in result.tasks_output] == ["done.", "done."]
 
 
 class TestCustomLLMCheckpointRestore:

@@ -11,7 +11,9 @@ from crewai.knowledge.storage.knowledge_storage import (  # type: ignore[import-
 
 
 @patch("crewai.knowledge.storage.knowledge_storage.get_rag_client")
-def test_knowledge_storage_connection_failure(mock_get_client: MagicMock) -> None:
+def test_knowledge_storage_connection_failure(
+    mock_get_client: MagicMock, caplog: pytest.LogCaptureFixture
+) -> None:
     """Test KnowledgeStorage handles RAG client connection failures."""
     mock_get_client.side_effect = ConnectionError("Unable to connect to ChromaDB")
 
@@ -19,6 +21,9 @@ def test_knowledge_storage_connection_failure(mock_get_client: MagicMock) -> Non
 
     results = storage.search(["test query"])
     assert results == []
+    assert (
+        "Error during knowledge search: Unable to connect to ChromaDB" in caplog.text
+    )
 
 
 @patch("crewai.knowledge.storage.knowledge_storage.get_rag_client")
@@ -32,6 +37,13 @@ def test_knowledge_storage_search_timeout(mock_get_client: MagicMock) -> None:
 
     results = storage.search(["test query"])
     assert results == []
+    mock_client.search.assert_called_once_with(
+        collection_name="knowledge_timeout_test",
+        query="test query",
+        limit=5,
+        metadata_filter=None,
+        score_threshold=0.6,
+    )
 
 
 @patch("crewai.knowledge.storage.knowledge_storage.get_rag_client")
@@ -47,6 +59,10 @@ def test_knowledge_storage_collection_not_found(mock_get_client: MagicMock) -> N
 
     results = storage.search(["test query"])
     assert results == []
+    assert (
+        mock_client.search.call_args.kwargs["collection_name"]
+        == "knowledge_missing_collection"
+    )
 
 
 @patch("crewai.knowledge.storage.knowledge_storage.get_rag_client")
@@ -69,7 +85,9 @@ def test_knowledge_storage_invalid_embedding_config(mock_get_client: MagicMock) 
 
 
 @patch("crewai.knowledge.storage.knowledge_storage.get_rag_client")
-def test_knowledge_storage_reset_readonly_database(mock_get_client: MagicMock) -> None:
+def test_knowledge_storage_reset_readonly_database(
+    mock_get_client: MagicMock, caplog: pytest.LogCaptureFixture
+) -> None:
     """Test KnowledgeStorage reset handles readonly database errors."""
     mock_client = MagicMock()
     mock_get_client.return_value = mock_client
@@ -81,10 +99,18 @@ def test_knowledge_storage_reset_readonly_database(mock_get_client: MagicMock) -
 
     storage.reset()
 
+    mock_client.delete_collection.assert_called_once_with(
+        collection_name="knowledge_readonly_test"
+    )
+    assert (
+        "Error during knowledge reset: attempt to write a readonly database"
+        in caplog.text
+    )
+
 
 @patch("crewai.knowledge.storage.knowledge_storage.get_rag_client")
 def test_knowledge_storage_reset_collection_does_not_exist(
-    mock_get_client: MagicMock,
+    mock_get_client: MagicMock, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Test KnowledgeStorage reset handles non-existent collections."""
     mock_client = MagicMock()
@@ -94,6 +120,11 @@ def test_knowledge_storage_reset_collection_does_not_exist(
     storage = KnowledgeStorage(collection_name="nonexistent_test")
 
     storage.reset()
+
+    mock_client.delete_collection.assert_called_once_with(
+        collection_name="knowledge_nonexistent_test"
+    )
+    assert "Error during knowledge reset: Collection does not exist" in caplog.text
 
 
 @patch("crewai.knowledge.storage.knowledge_storage.get_rag_client")
@@ -112,8 +143,12 @@ def test_knowledge_storage_malformed_search_results(mock_get_client: MagicMock) 
 
     results = storage.search(["test query"])
 
-    assert isinstance(results, list)
-    assert len(results) == 4
+    assert results == [
+        {"content": "valid result", "metadata": {"source": "test"}},
+        {"invalid": "missing content field", "metadata": {"source": "test"}},
+        None,
+        {"content": None, "metadata": {"source": "test"}},
+    ]
 
 
 @patch("crewai.knowledge.storage.knowledge_storage.get_rag_client")

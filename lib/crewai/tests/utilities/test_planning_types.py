@@ -26,30 +26,6 @@ class TestPlanStep:
         assert step.tool_to_use is None
         assert step.depends_on == []
 
-    def test_plan_step_with_all_fields(self):
-        """Test PlanStep creation with all fields."""
-        step = PlanStep(
-            step_number=2,
-            description="Search for information",
-            tool_to_use="search_tool",
-            depends_on=[1],
-        )
-
-        assert step.step_number == 2
-        assert step.description == "Search for information"
-        assert step.tool_to_use == "search_tool"
-        assert step.depends_on == [1]
-
-    def test_plan_step_with_multiple_dependencies(self):
-        """Test PlanStep with multiple dependencies."""
-        step = PlanStep(
-            step_number=4,
-            description="Synthesize results",
-            depends_on=[1, 2, 3],
-        )
-
-        assert step.depends_on == [1, 2, 3]
-
     def test_plan_step_requires_step_number(self):
         """Test that step_number is required."""
         with pytest.raises(ValueError):
@@ -59,21 +35,6 @@ class TestPlanStep:
         """Test that description is required."""
         with pytest.raises(ValueError):
             PlanStep(step_number=1)
-
-    def test_plan_step_serialization(self):
-        """Test PlanStep can be serialized to dict."""
-        step = PlanStep(
-            step_number=1,
-            description="Test step",
-            tool_to_use="test_tool",
-            depends_on=[],
-        )
-
-        data = step.model_dump()
-        assert data["step_number"] == 1
-        assert data["description"] == "Test step"
-        assert data["tool_to_use"] == "test_tool"
-        assert data["depends_on"] == []
 
 
 class TestTodoItem:
@@ -96,35 +57,10 @@ class TestTodoItem:
         assert todo.id is not None
         UUID(todo.id)
 
-    def test_todo_item_with_all_fields(self):
-        """Test TodoItem creation with all fields."""
-        todo = TodoItem(
-            id="custom-id-123",
-            step_number=2,
-            description="Second task",
-            tool_to_use="search_tool",
-            status="running",
-            depends_on=[1],
-            result="Task completed",
-        )
-
-        assert todo.id == "custom-id-123"
-        assert todo.step_number == 2
-        assert todo.description == "Second task"
-        assert todo.tool_to_use == "search_tool"
-        assert todo.status == "running"
-        assert todo.depends_on == [1]
-        assert todo.result == "Task completed"
-
-    def test_todo_item_status_values(self):
-        """Test all valid status values."""
-        for status in ["pending", "running", "completed"]:
-            todo = TodoItem(
-                step_number=1,
-                description="Test",
-                status=status,
-            )
-            assert todo.status == status
+    def test_todo_item_rejects_unknown_status(self):
+        """Test that status is limited to pending, running, and completed."""
+        with pytest.raises(ValueError):
+            TodoItem(step_number=1, description="Test", status="done")
 
     def test_todo_item_auto_generates_unique_ids(self):
         """Test that each TodoItem gets a unique auto-generated ID."""
@@ -132,20 +68,6 @@ class TestTodoItem:
         todo2 = TodoItem(step_number=2, description="Task 2")
 
         assert todo1.id != todo2.id
-
-    def test_todo_item_serialization(self):
-        """Test TodoItem can be serialized to dict."""
-        todo = TodoItem(
-            step_number=1,
-            description="Test task",
-            status="pending",
-        )
-
-        data = todo.model_dump()
-        assert "id" in data
-        assert data["step_number"] == 1
-        assert data["description"] == "Test task"
-        assert data["status"] == "pending"
 
 
 class TestTodoList:
@@ -259,6 +181,13 @@ class TestTodoList:
         """Test mark_running handles missing step gracefully."""
         sample_todo_list.mark_running(99)
 
+        assert [item.status for item in sample_todo_list.items] == [
+            "completed",
+            "running",
+            "pending",
+            "pending",
+        ]
+
     def test_mark_completed(self, sample_todo_list):
         """Test mark_completed changes status correctly."""
         sample_todo_list.mark_completed(3)
@@ -276,6 +205,15 @@ class TestTodoList:
     def test_mark_completed_does_nothing_for_missing(self, sample_todo_list):
         """Test mark_completed handles missing step gracefully."""
         sample_todo_list.mark_completed(99, result="Some result")
+
+        assert [
+            (item.status, item.result) for item in sample_todo_list.items
+        ] == [
+            ("completed", None),
+            ("running", None),
+            ("pending", None),
+            ("pending", None),
+        ]
 
     def test_todo_list_workflow(self):
         """Test a complete workflow through TodoList."""
@@ -326,57 +264,3 @@ class TestTodoList:
         assert todo_list.completed_count == 3
         assert todo_list.current_todo is None
         assert todo_list.next_pending is None
-
-
-class TestTodoFromPlanStep:
-    """Tests for converting PlanStep to TodoItem."""
-
-    def test_convert_plan_step_to_todo_item(self):
-        """Test converting a PlanStep to TodoItem."""
-        step = PlanStep(
-            step_number=1,
-            description="Search for information",
-            tool_to_use="search_tool",
-            depends_on=[],
-        )
-
-        todo = TodoItem(
-            step_number=step.step_number,
-            description=step.description,
-            tool_to_use=step.tool_to_use,
-            depends_on=step.depends_on,
-            status="pending",
-        )
-
-        assert todo.step_number == step.step_number
-        assert todo.description == step.description
-        assert todo.tool_to_use == step.tool_to_use
-        assert todo.depends_on == step.depends_on
-        assert todo.status == "pending"
-
-    def test_convert_multiple_plan_steps_to_todo_list(self):
-        """Test converting multiple PlanSteps to a TodoList."""
-        steps = [
-            PlanStep(step_number=1, description="Step 1", tool_to_use="tool1"),
-            PlanStep(step_number=2, description="Step 2", depends_on=[1]),
-            PlanStep(step_number=3, description="Step 3", depends_on=[1, 2]),
-        ]
-
-        todos = []
-        for step in steps:
-            todo = TodoItem(
-                step_number=step.step_number,
-                description=step.description,
-                tool_to_use=step.tool_to_use,
-                depends_on=step.depends_on,
-                status="pending",
-            )
-            todos.append(todo)
-
-        todo_list = TodoList(items=todos)
-
-        assert len(todo_list.items) == 3
-        assert todo_list.pending_count == 3
-        assert todo_list.items[0].tool_to_use == "tool1"
-        assert todo_list.items[1].depends_on == [1]
-        assert todo_list.items[2].depends_on == [1, 2]

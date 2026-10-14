@@ -44,8 +44,8 @@ def test_template_list_command(mock_cls, runner):
     result = runner.invoke(template_list)
 
     assert result.exit_code == 0
-    mock_cls.assert_called_once()
-    mock_instance.list_templates.assert_called_once()
+    mock_cls.assert_called_once_with()
+    mock_instance.list_templates.assert_called_once_with()
 
 
 @patch("crewai_cli.cli.TemplateCommand")
@@ -56,7 +56,7 @@ def test_template_add_command(mock_cls, runner):
     result = runner.invoke(template_add, ["deep_research"])
 
     assert result.exit_code == 0
-    mock_cls.assert_called_once()
+    mock_cls.assert_called_once_with()
     mock_instance.add_template.assert_called_once_with("deep_research", None)
 
 
@@ -93,8 +93,11 @@ class TestTemplateCommand:
 
         templates = cmd._fetch_templates()
 
-        assert len(templates) == 3
-        assert all(t["name"].startswith("template_") for t in templates)
+        assert [t["name"] for t in templates] == [
+            "template_conversational_example",
+            "template_deep_research",
+            "template_pull_request_review",
+        ]
 
     @patch("crewai_cli.remote_template.main.httpx.get")
     def test_fetch_templates_excludes_private(self, mock_get, cmd):
@@ -119,8 +122,10 @@ class TestTemplateCommand:
     def test_fetch_templates_api_error(self, mock_get, cmd):
         mock_get.side_effect = httpx.HTTPError("connection error")
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(SystemExit) as exc_info:
             cmd._fetch_templates()
+
+        assert exc_info.value.code == 1
 
     @patch("crewai_cli.remote_template.main.click.prompt", return_value="q")
     @patch("crewai_cli.remote_template.main.httpx.get")
@@ -135,7 +140,15 @@ class TestTemplateCommand:
 
         with patch("crewai_cli.remote_template.main.console") as mock_console:
             cmd.list_templates()
-            assert mock_console.print.call_count > 0
+
+        printed = [c.args[0] for c in mock_console.print.call_args_list]
+        assert " [green]o[/green]  Found [bold]3[/bold] templates\n" in printed
+        assert printed[-4:] == [
+            "      [bold cyan]1.[/bold cyan] [bold white]conversational_example[/bold white] [dim](Conversational demo)[/dim]",
+            "      [bold cyan]2.[/bold cyan] [bold white]deep_research[/bold white] [dim](Deep research template)[/dim]",
+            "      [bold cyan]3.[/bold cyan] [bold white]pull_request_review[/bold white] [dim](PR review template)[/dim]",
+            "      [bold cyan]q.[/bold cyan] [dim]Quit[/dim]\n",
+        ]
 
     @patch("crewai_cli.remote_template.main.httpx.get")
     def test_resolve_repo_name_with_prefix(self, mock_get, cmd):
@@ -213,8 +226,10 @@ class TestTemplateCommand:
     def test_add_template_not_found(self, mock_resolve, cmd):
         mock_resolve.return_value = None
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(SystemExit) as exc_info:
             cmd.add_template("nonexistent")
+
+        assert exc_info.value.code == 1
 
     @patch.object(TemplateCommand, "_extract_zip")
     @patch.object(TemplateCommand, "_download_zip")
@@ -232,15 +247,23 @@ class TestTemplateCommand:
         expected_dest = os.path.join(str(tmp_path), "my_project")
         mock_extract.assert_called_once_with(b"fake-zip-bytes", expected_dest)
 
+    @patch.object(TemplateCommand, "_download_zip")
     @patch.object(TemplateCommand, "_resolve_repo_name")
     @patch("crewai_cli.remote_template.main.click.prompt", return_value="q")
-    def test_add_template_dir_exists_quit(self, mock_prompt, mock_resolve, cmd, tmp_path):
+    def test_add_template_dir_exists_quit(self, mock_prompt, mock_resolve, mock_download, cmd, tmp_path):
         mock_resolve.return_value = "template_deep_research"
         existing = tmp_path / "deep_research"
         existing.mkdir()
 
         os.chdir(tmp_path)
         cmd.add_template("deep_research")
+
+        mock_prompt.assert_called_once_with(
+            "Enter a different directory name (or 'q' to quit)", type=str
+        )
+        mock_download.assert_not_called()
+        assert os.listdir(tmp_path) == ["deep_research"]
+        assert os.listdir(existing) == []
 
     @patch.object(TemplateCommand, "_install_repo")
     @patch("crewai_cli.remote_template.main.click.prompt", return_value="2")
@@ -275,4 +298,5 @@ class TestTemplateCommand:
         with patch("crewai_cli.remote_template.main.console"):
             cmd.list_templates()
 
+        mock_prompt.assert_called_once_with("Enter your choice", type=str)
         mock_install.assert_not_called()

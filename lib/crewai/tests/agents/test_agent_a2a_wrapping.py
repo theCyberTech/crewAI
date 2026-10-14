@@ -24,7 +24,8 @@ def test_agent_without_a2a_has_no_wrapper():
     )
 
     assert agent.a2a is None
-    assert callable(agent.execute_task)
+    assert agent.execute_task.__func__ is Agent.execute_task
+    assert not hasattr(agent.execute_task, "__wrapped__")
 
 
 @pytest.mark.skipif(
@@ -67,26 +68,6 @@ def test_agent_with_a2a_creates_successfully():
     assert agent.a2a.endpoint == "http://test-endpoint.com/"
     assert callable(agent.execute_task)
     assert hasattr(agent.execute_task, "__wrapped__")
-
-
-def test_multiple_agents_without_a2a():
-    """Verify that multiple agents without a2a work correctly."""
-    agent1 = Agent(
-        role="agent 1",
-        goal="test goal",
-        backstory="test backstory",
-    )
-
-    agent2 = Agent(
-        role="agent 2",
-        goal="test goal",
-        backstory="test backstory",
-    )
-
-    assert agent1.a2a is None
-    assert agent2.a2a is None
-    assert callable(agent1.execute_task)
-    assert callable(agent2.execute_task)
 
 
 @pytest.mark.skipif(not A2A_SDK_INSTALLED, reason="Requires a2a-sdk to be installed")

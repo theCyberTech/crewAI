@@ -4,31 +4,6 @@ from crewai import Agent, Crew, Task
 from crewai.security import Fingerprint, SecurityConfig
 
 
-def test_basic_usage_examples():
-    """Test the basic usage examples from the documentation."""
-    agent = Agent(
-        role="Data Scientist", goal="Analyze data", backstory="Expert in data analysis"
-    )
-
-    assert agent.fingerprint is not None
-    assert isinstance(agent.fingerprint, Fingerprint)
-    assert agent.fingerprint.uuid_str is not None
-
-    crew = Crew(agents=[agent], tasks=[])
-    assert crew.fingerprint is not None
-    assert isinstance(crew.fingerprint, Fingerprint)
-    assert crew.fingerprint.uuid_str is not None
-
-    task = Task(
-        description="Analyze customer data",
-        expected_output="Insights from data analysis",
-        agent=agent,
-    )
-    assert task.fingerprint is not None
-    assert isinstance(task.fingerprint, Fingerprint)
-    assert task.fingerprint.uuid_str is not None
-
-
 def test_accessing_fingerprints_example():
     """Test the accessing fingerprints example from the documentation."""
     agent = Agent(

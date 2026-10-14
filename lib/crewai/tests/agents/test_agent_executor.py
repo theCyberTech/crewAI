@@ -307,11 +307,22 @@ class TestAgentExecutor:
         executor._is_feedback_iteration = True
 
         with patch("crewai.utilities.reasoning_handler.AgentReasoning") as reasoning:
+            reasoning.return_value.handle_agent_reasoning.return_value = (
+                SimpleNamespace(
+                    plan=SimpleNamespace(plan="Step 1: Do X", ready=False, steps=[])
+                )
+            )
             executor.generate_plan()
 
-        reasoning.assert_not_called()
-        assert executor.state.plan is None
-        assert executor.state.todos.items == []
+            reasoning.assert_not_called()
+            assert executor.state.plan is None
+            assert executor.state.todos.items == []
+
+            executor._is_feedback_iteration = False
+            executor.generate_plan()
+
+        reasoning.assert_called_once_with(agent=executor.agent, task=executor.task)
+        assert executor.state.plan == "Step 1: Do X"
 
     def test_inject_files_from_crew_task_store(self):
         """Crew-level input_files should attach to the LLM user message."""
@@ -701,15 +712,6 @@ class TestAgentExecutor:
         executor._invoke_step_callback(answer)
 
         callback.assert_called_once_with(answer)
-
-    def test_invoke_step_callback_none(self, mock_dependencies):
-        """Test step callback when none provided."""
-        mock_dependencies["step_callback"] = None
-        executor = _build_executor(**mock_dependencies)
-
-        executor._invoke_step_callback(
-            AgentFinish(thought="thinking", output="test", text="final")
-        )
 
     @pytest.mark.asyncio
     async def test_invoke_step_callback_async_inside_running_loop(
@@ -1615,12 +1617,14 @@ class TestAgentExecutorPlanning:
         with patch.object(AgentExecutor, "invoke", capture_executor):
             result = agent.kickoff("What is 7 + 7?")
 
-        assert result is not None
-
-        if executor_ref[0] is not None:
-            # After planning, state should have plan info
-            assert hasattr(executor_ref[0].state, "plan")
-            assert hasattr(executor_ref[0].state, "plan_ready")
+        assert result.raw == "The result of adding 7 and 7 is 14."
+        state = executor_ref[0].state
+        assert state.plan == "Calculate the sum of 7 and 7 and output the result."
+        assert state.plan_ready is True
+        assert [todo.description for todo in state.todos.items] == [
+            "Perform the addition of 7 and 7.",
+            "Output the result of the addition.",
+        ]
 
     @pytest.mark.vcr()
     def test_planning_creates_minimal_steps_for_multi_step_task(self):
@@ -1795,12 +1799,17 @@ class TestResponseFormatWithKickoff:
             response_format=ResearchSummary,
         )
 
-        assert result is not None
-        assert result.pydantic is not None
         assert isinstance(result.pydantic, ResearchSummary)
-        assert len(result.pydantic.topic) > 0
-        assert len(result.pydantic.key_findings) >= 1
-        assert len(result.pydantic.conclusion) > 0
+        assert result.pydantic.topic == "Current State of Autonomous AI Agents in 2025"
+        assert len(result.pydantic.key_findings) == 4
+        assert result.pydantic.key_findings[2] == (
+            "The market for autonomous AI agents is projected to grow to $9.9 billion "
+            "in 2025, reflecting increased enterprise adoption and demand for "
+            "automation solutions."
+        )
+        assert result.pydantic.conclusion.startswith(
+            "As of 2025, the landscape of autonomous AI agents is rapidly transforming"
+        )
 
     @pytest.mark.vcr()
     def test_kickoff_no_response_format_returns_raw_text(self):
@@ -2605,18 +2614,13 @@ class TestPlanningConfigDefaults:
     def test_planning_config_default_is_medium(self):
         from crewai.agent.planning_config import PlanningConfig
 
-        config = PlanningConfig()
-        assert config.reasoning_effort == "medium", (
-            f"Default should be 'medium', got '{config.reasoning_effort}'"
+        configured = _build_executor(
+            agent=SimpleNamespace(planning_config=PlanningConfig())
         )
+        unconfigured = _build_executor(agent=SimpleNamespace(planning_config=None))
 
-    def test_explicit_config_matches_implicit_planning(self):
-        """Agent(planning=True) and Agent(planning=True, planning_config=PlanningConfig())
-        should produce the same reasoning_effort."""
-        from crewai.agent.planning_config import PlanningConfig
-
-        config = PlanningConfig()
-        assert config.reasoning_effort == "medium"
+        assert configured._get_reasoning_effort() == "medium"
+        assert unconfigured._get_reasoning_effort() == "medium"
 
 
 # Vision Image Format Contract
@@ -2627,20 +2631,47 @@ class TestVisionImageFormatContract:
     _format_messages handles conversion to its native format."""
 
     def test_step_executor_uses_standard_image_url_format(self):
-        import inspect
         from crewai.agents.step_executor import StepExecutor
 
-        source = inspect.getsource(StepExecutor._build_observation_message)
-        assert "image_url" in source, (
-            "Step executor should use standard image_url format"
+        message = StepExecutor._build_observation_message(
+            "VISION_IMAGE:image/png:aGVsbG8="
         )
+
+        assert message == {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Observation: Here is the image:"},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": "data:image/png;base64,aGVsbG8="},
+                },
+            ],
+        }
 
     def test_anthropic_provider_has_image_block_converter(self):
         from crewai.llms.providers.anthropic.completion import AnthropicCompletion
 
-        assert hasattr(AnthropicCompletion, "_convert_image_blocks"), (
-            "Anthropic provider must have _convert_image_blocks for auto-conversion"
+        converted = AnthropicCompletion._convert_image_blocks(
+            [
+                {"type": "text", "text": "Observation: Here is the image:"},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": "data:image/png;base64,aGVsbG8="},
+                },
+            ]
         )
+
+        assert converted == [
+            {"type": "text", "text": "Observation: Here is the image:"},
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": "aGVsbG8=",
+                },
+            },
+        ]
 
 
 class TestEnsureForceFinalAnswer:

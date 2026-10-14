@@ -17,9 +17,7 @@ async def test_anthropic_async_basic_call():
 
     result = await llm.acall("Say hello")
 
-    assert result is not None
-    assert isinstance(result, str)
-    assert len(result) > 0
+    assert result == "Hello! It's nice to meet you. How are you doing today?"
 
 
 @pytest.mark.vcr()
@@ -30,8 +28,7 @@ async def test_anthropic_async_with_temperature():
 
     result = await llm.acall("Say the word 'test' once")
 
-    assert result is not None
-    assert isinstance(result, str)
+    assert result == "test"
 
 
 @pytest.mark.vcr()
@@ -42,9 +39,7 @@ async def test_anthropic_async_with_max_tokens():
 
     result = await llm.acall("Write a very long story about a dragon.")
 
-    assert result is not None
-    assert isinstance(result, str)
-    assert len(result.split()) <= 10
+    assert result == "# The Last Song of Vaelthys"
 
 
 @pytest.mark.vcr()
@@ -60,8 +55,7 @@ async def test_anthropic_async_with_system_message():
 
     result = await llm.acall(messages)
 
-    assert result is not None
-    assert isinstance(result, str)
+    assert result == "2 + 2 = 4"
 
 
 @pytest.mark.vcr()
@@ -78,8 +72,7 @@ async def test_anthropic_async_conversation():
 
     result = await llm.acall(messages)
 
-    assert result is not None
-    assert isinstance(result, str)
+    assert result == "Your name is Alice."
 
 
 @pytest.mark.vcr()
@@ -93,8 +86,7 @@ async def test_anthropic_async_stop_sequences():
 
     result = await llm.acall("Count from 1 to 10")
 
-    assert result is not None
-    assert isinstance(result, str)
+    assert result == "1, 2, 3, 4, 5, 6, 7, 8, 9, 10"
 
 
 @pytest.mark.vcr()
@@ -106,10 +98,8 @@ async def test_anthropic_async_multiple_calls():
     result1 = await llm.acall("What is 1+1?")
     result2 = await llm.acall("What is 2+2?")
 
-    assert result1 is not None
-    assert result2 is not None
-    assert isinstance(result1, str)
-    assert isinstance(result2, str)
+    assert result1 == "1 + 1 = 2"
+    assert result2 == "2 + 2 = 4"
 
 
 @pytest.mark.vcr()
@@ -120,8 +110,10 @@ async def test_anthropic_async_with_response_format_none():
 
     result = await llm.acall("Tell me a short fact")
 
-    assert result is not None
-    assert isinstance(result, str)
+    assert result == (
+        "Honey never spoils! Archaeologists have found edible honey in ancient "
+        "Egyptian tombs that's over 3,000 years old."
+    )
 
 
 @pytest.mark.vcr()
@@ -131,10 +123,7 @@ async def test_anthropic_async_with_response_format_json():
     llm = LLM(model="anthropic/claude-sonnet-4-0", response_format={"type": "json_object"})
 
     result = await llm.acall("Return a JSON object devoid of ```json{x}```, where x is the json object, with a 'greeting' field")
-    assert isinstance(result, str)
-    deserialized_result = json.loads(result)
-    assert isinstance(deserialized_result, dict)
-    assert isinstance(deserialized_result["greeting"], str)
+    assert json.loads(result) == {"greeting": "Hello! How can I assist you today?"}
 
 
 class GreetingResponse(BaseModel):
@@ -155,9 +144,7 @@ async def test_anthropic_async_with_response_model():
         response_model=GreetingResponse
     )
     # When response_model is provided, the result is already a parsed Pydantic model instance
-    assert isinstance(result, GreetingResponse)
-    assert isinstance(result.greeting, str)
-    assert isinstance(result.language, str)
+    assert result == GreetingResponse(greeting="Bonjour", language="French")
 
 
 @pytest.mark.vcr()
@@ -192,6 +179,6 @@ async def test_anthropic_async_with_tools():
     )
     logging.debug("result: %s", result)
 
-    assert result is not None
-    # Result can be either a string or a list of tool calls (native tool calling)
-    assert isinstance(result, (str, list))
+    assert [(call.id, call.name, call.input) for call in result] == [
+        ("toolu_0133tWTcW1kwL2KtdJQbPahU", "get_weather", {"location": "San Francisco, CA"})
+    ]

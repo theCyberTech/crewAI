@@ -122,7 +122,10 @@ def test_memory_reset_all_rebuilds_reopened_store_with_new_dimension(
         importance=0.5,
     )
 
-    assert mem.recall("new embedder output", scope="/facts", depth="shallow")
+    matches = mem.recall("new embedder output", scope="/facts", depth="shallow")
+    assert [(m.record.content, m.record.scope) for m in matches] == [
+        ("new embedder output", "/crew/test/facts")
+    ]
 
 
 def test_lancedb_matching_dim_still_works(lancedb_path: Path) -> None:
@@ -132,7 +135,8 @@ def test_lancedb_matching_dim_still_works(lancedb_path: Path) -> None:
     storage.save([_record(4)])
     storage.save([_record(4, "second")])
 
-    assert len(storage.search([0.1] * 4, limit=5)) == 2
+    results = storage.search([0.1] * 4, limit=5)
+    assert sorted(record.content for record, _score in results) == ["second", "test"]
 
 
 def test_error_is_not_a_runtime_error() -> None:

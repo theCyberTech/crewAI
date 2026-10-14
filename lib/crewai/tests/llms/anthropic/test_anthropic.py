@@ -360,16 +360,26 @@ def test_anthropic_completion_with_tools():
         )
 
         crew = Crew(agents=[agent], tasks=[task])
-        crew.kickoff()
+        result = crew.kickoff()
 
-        assert mock_call.called
-
-        call_args = mock_call.call_args
-        call_kwargs = call_args[1] if len(call_args) > 1 else {}
-
-        if 'tools' in call_kwargs:
-            assert call_kwargs['tools'] is not None
-            assert len(call_kwargs['tools']) > 0
+        assert result.raw == "Task completed with tools."
+        mock_call.assert_called_once()
+        assert mock_call.call_args.kwargs["tools"] == [
+            {
+                "type": "function",
+                "function": {
+                    "name": "sample_tool",
+                    "description": "A sample tool for testing",
+                    "parameters": {
+                        "properties": {"query": {"title": "Query", "type": "string"}},
+                        "required": ["query"],
+                        "type": "object",
+                        "additionalProperties": False,
+                    },
+                    "strict": True,
+                },
+            }
+        ]
 
 
 def test_anthropic_raises_error_when_model_not_supported():
@@ -388,9 +398,9 @@ def test_anthropic_raises_error_when_model_not_supported():
             body={}
         )
 
-        llm = LLM(model="anthropic/model-doesnt-exist")
+        llm = LLM(model="anthropic/model-doesnt-exist", provider="anthropic")
 
-        with pytest.raises(Exception):  # Should raise some error for unsupported model
+        with pytest.raises(NotFoundError, match="model-doesnt-exist"):
             llm.call("Hello")
 
 
@@ -526,6 +536,7 @@ def test_anthropic_model_detection():
         llm = LLM(model=model_name)
         from crewai.llms.providers.anthropic.completion import AnthropicCompletion
         assert isinstance(llm, AnthropicCompletion), f"Failed for model: {model_name}"
+        assert llm.model == "claude-3-5-sonnet-20241022"
 
 
 def test_anthropic_supports_stop_words():
@@ -616,8 +627,7 @@ def test_anthropic_environment_variable_api_key():
     with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-anthropic-key"}):
         llm = LLM(model="anthropic/claude-3-5-sonnet-20241022")
 
-        assert llm._client is not None
-        assert hasattr(llm._client, 'messages')
+        assert llm._client.api_key == "test-anthropic-key"
 
 
 def test_anthropic_token_usage_tracking():
@@ -672,11 +682,18 @@ def test_anthropic_stop_sequences_sent_to_api():
 
     llm.stop = ["\nObservation:", "\nThought:"]
 
-    result = llm.call("Say hello in one word")
+    original_create = llm._client.messages.create
+    captured_params = {}
 
-    assert result is not None
-    assert isinstance(result, str)
-    assert len(result) > 0
+    def capture_and_call(**kwargs):
+        captured_params.update(kwargs)
+        return original_create(**kwargs)
+
+    with patch.object(llm._client.messages, "create", side_effect=capture_and_call):
+        result = llm.call("Say hello in one word")
+
+    assert result == "Hello."
+    assert captured_params["stop_sequences"] == ["\nObservation:", "\nThought:"]
 
 @pytest.mark.vcr(filter_headers=["authorization", "x-api-key"])
 def test_anthropic_thinking():
@@ -977,11 +994,19 @@ def test_anthropic_agent_kickoff_structured_output_without_tools():
         response_format=AnalysisResult,
     )
 
-    assert result.pydantic is not None, "Expected pydantic output but got None"
     assert isinstance(result.pydantic, AnalysisResult), f"Expected AnalysisResult but got {type(result.pydantic)}"
-    assert result.pydantic.topic, "Topic should not be empty"
-    assert len(result.pydantic.key_points) > 0, "Should have at least one key point"
-    assert result.pydantic.summary, "Summary should not be empty"
+    assert result.pydantic.topic == "Benefits of Remote Work"
+    assert result.pydantic.key_points == [
+        "Increased flexibility in work schedule",
+        "Reduced commute time and transportation costs",
+        "Improved work-life balance",
+        "Higher employee productivity and job satisfaction",
+        "Cost savings for companies on office space",
+        "Access to a global talent pool",
+    ]
+    assert result.pydantic.summary.startswith(
+        "Remote work offers significant advantages for both employees and employers"
+    )
 
 
 @pytest.mark.vcr()
@@ -1761,6 +1786,9 @@ def test_anthropic_missing_cache_fields_default_to_zero():
     mock_response.usage.cache_creation_input_tokens = None
 
     usage = llm._extract_anthropic_token_usage(mock_response)
+    assert usage["input_tokens"] == 40
+    assert usage["output_tokens"] == 20
+    assert usage["total_tokens"] == 60
     assert usage["cached_prompt_tokens"] == 0
     assert usage["cache_creation_tokens"] == 0
 

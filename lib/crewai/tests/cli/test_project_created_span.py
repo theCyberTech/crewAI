@@ -9,6 +9,7 @@ Lives here rather than in `lib/cli/tests/` because `lib/cli/tests/` is not run b
 workflow, while this directory is part of the required job.
 """
 
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
@@ -184,6 +185,8 @@ def test_adding_a_crew_to_an_existing_project_is_not_an_acquisition():
             module.create_crew(
                 "extra_crew", skip_provider=True, parent_folder="host_project"
             )
+
+        assert Path("host_project/extra_crew/crew.py").is_file()
 
     assert not mint.called, "the parent_folder branch must not mint a new id"
     assert not telemetry_cls.return_value.project_created_span.called, (

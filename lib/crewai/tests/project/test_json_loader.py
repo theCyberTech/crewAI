@@ -87,7 +87,7 @@ def test_find_json_project_file_prefers_jsonc(tmp_path: Path):
     ],
 )
 def test_windows_absolute_path_detection(path_value: str):
-    assert _looks_like_windows_absolute_path(path_value)
+    assert _looks_like_windows_absolute_path(path_value) is True
 
 
 @pytest.mark.parametrize(
@@ -99,7 +99,7 @@ def test_windows_absolute_path_detection(path_value: str):
     ],
 )
 def test_windows_absolute_path_detection_ignores_relative_paths(path_value: str):
-    assert not _looks_like_windows_absolute_path(path_value)
+    assert _looks_like_windows_absolute_path(path_value) is False
 
 
 class TestLoadAgent:
@@ -129,6 +129,7 @@ class TestLoadAgent:
 
         agent = load_agent(agent_file)
         assert agent.role == "Coder"
+        assert agent.llm.model == "gpt-4o"
 
     def test_load_agent_with_llm_config_object(self, tmp_path: Path):
         agent_def = {
@@ -299,9 +300,9 @@ class TestLoadAgent:
         agent = load_agent(agent_file)
 
         tool_filter = agent.mcps[0].tool_filter
-        assert tool_filter({"name": "read_file"})
-        assert not tool_filter({"name": "delete_file"})
-        assert not tool_filter({"name": "write_file"})
+        assert tool_filter({"name": "read_file"}) is True
+        assert tool_filter({"name": "delete_file"}) is False
+        assert tool_filter({"name": "write_file"}) is False
 
     def test_load_agent_rejects_runtime_fields(self, tmp_path: Path):
         agent_def = {
@@ -352,7 +353,9 @@ class TestLoadAgent:
         agent_file = tmp_path / "agent.json"
         agent_file.write_text(json.dumps(agent_def))
 
-        with pytest.raises(Exception):
+        with pytest.raises(
+            JSONProjectValidationError, match="missing required field 'goal'"
+        ):
             load_agent(agent_file)
 
     @pytest.mark.parametrize("field", ["role", "goal", "backstory"])
@@ -605,9 +608,11 @@ class TestValidationDoesNotExecuteTools:
         agent_def["step_callback"] = {"python": "callbacks.step_callback"}
         agent_file.write_text(json.dumps(agent_def))
 
-        validate_crew_project(crew_path, tmp_path / "agents")
+        project = validate_crew_project(crew_path, tmp_path / "agents")
 
         assert not sentinel.exists(), "validation must not import Python refs"
+        assert "callbacks" not in sys.modules
+        assert project.agent_names == ["worker"]
 
     def test_validate_does_not_import_tool_refs(
         self, tmp_path, monkeypatch: pytest.MonkeyPatch
@@ -629,9 +634,11 @@ class TestValidationDoesNotExecuteTools:
         sys.modules.pop("project_tools", None)
         crew_path = self._write_project(tmp_path, tool_line='"project_tools:LookupTool"')
 
-        validate_crew_project(crew_path, tmp_path / "agents")
+        project = validate_crew_project(crew_path, tmp_path / "agents")
 
         assert not sentinel.exists(), "validation must not import tool refs"
+        assert "project_tools" not in sys.modules
+        assert project.agent_names == ["worker"]
 
     def test_validate_reports_missing_custom_tool_file(self, tmp_path):
         from crewai.project.json_loader import (

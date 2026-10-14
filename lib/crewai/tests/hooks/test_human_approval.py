@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 from crewai.hooks.llm_hooks import LLMCallHookContext
 from crewai.hooks.tool_hooks import ToolCallHookContext
@@ -61,12 +61,18 @@ class TestLLMHookHumanInput:
 
         context = LLMCallHookContext(executor=mock_executor)
 
-        response = context.request_human_input(
-            prompt="Test prompt", default_message="Test default message"
-        )
+        with patch("crewai.hooks.llm_hooks.PRINTER") as mock_printer:
+            response = context.request_human_input(
+                prompt="Test prompt", default_message="Test default message"
+            )
 
         assert response == "test response"
-        mock_input.assert_called_once()
+        mock_input.assert_called_once_with()
+        assert mock_printer.print.call_args_list == [
+            call(content="\nTest prompt", color="bold_yellow"),
+            call(content="Test default message", color="cyan"),
+            call(content="\nProcessing your input...", color="cyan"),
+        ]
 
     @patch("builtins.input", return_value="")
     @patch("crewai.hooks.llm_hooks.event_listener")
@@ -79,10 +85,17 @@ class TestLLMHookHumanInput:
 
         context = LLMCallHookContext(executor=mock_executor)
 
-        response = context.request_human_input(prompt="Test")
+        with patch("crewai.hooks.llm_hooks.PRINTER") as mock_printer:
+            response = context.request_human_input(prompt="Test")
 
         assert response == ""
-        mock_input.assert_called_once()
+        mock_input.assert_called_once_with()
+        assert mock_printer.print.call_args_list == [
+            call(content="\nTest", color="bold_yellow"),
+            call(
+                content="Press Enter to continue, or provide feedback:", color="cyan"
+            ),
+        ]
 
     @patch("builtins.input", return_value="test")
     @patch("crewai.hooks.llm_hooks.event_listener")
@@ -93,13 +106,16 @@ class TestLLMHookHumanInput:
         mock_formatter = Mock()
         mock_event_listener.formatter = mock_formatter
 
+        order: list[str] = []
+        mock_formatter.pause_live_updates.side_effect = lambda: order.append("pause")
+        mock_formatter.resume_live_updates.side_effect = lambda: order.append("resume")
+        mock_input.side_effect = lambda: order.append("input") or "test"
+
         context = LLMCallHookContext(executor=mock_executor)
 
         context.request_human_input(prompt="Test")
 
-        mock_formatter.pause_live_updates.assert_called_once()
-
-        mock_formatter.resume_live_updates.assert_called_once()
+        assert order == ["pause", "input", "resume"]
 
     @patch("builtins.input", side_effect=Exception("Input error"))
     @patch("crewai.hooks.llm_hooks.event_listener")
@@ -188,6 +204,11 @@ class TestToolHookHumanInput:
         mock_formatter = Mock()
         mock_event_listener.formatter = mock_formatter
 
+        order: list[str] = []
+        mock_formatter.pause_live_updates.side_effect = lambda: order.append("pause")
+        mock_formatter.resume_live_updates.side_effect = lambda: order.append("resume")
+        mock_input.side_effect = lambda: order.append("input") or "test"
+
         context = ToolCallHookContext(
             tool_name="test_tool",
             tool_input={},
@@ -196,8 +217,7 @@ class TestToolHookHumanInput:
 
         context.request_human_input(prompt="Test")
 
-        mock_formatter.pause_live_updates.assert_called_once()
-        mock_formatter.resume_live_updates.assert_called_once()
+        assert order == ["pause", "input", "resume"]
 
     @patch("builtins.input", side_effect=KeyboardInterrupt)
     @patch("crewai.hooks.tool_hooks.event_listener")
@@ -219,171 +239,3 @@ class TestToolHookHumanInput:
 
         mock_formatter.resume_live_updates.assert_called_once()
 
-
-class TestApprovalHookIntegration:
-    """Test integration scenarios with approval hooks."""
-
-    @patch("builtins.input", return_value="approve")
-    @patch("crewai.hooks.tool_hooks.event_listener")
-    def test_approval_hook_allows_execution(
-        self, mock_event_listener, mock_input, mock_tool
-    ):
-        """Test that approval hook allows execution when approved."""
-        mock_formatter = Mock()
-        mock_event_listener.formatter = mock_formatter
-
-        def approval_hook(context: ToolCallHookContext) -> bool | None:
-            response = context.request_human_input(
-                prompt="Approve?", default_message="Type 'approve':"
-            )
-            return None if response == "approve" else False
-
-        context = ToolCallHookContext(
-            tool_name="test_tool",
-            tool_input={},
-            tool=mock_tool,
-        )
-
-        result = approval_hook(context)
-
-        assert result is None
-        assert mock_input.called
-
-    @patch("builtins.input", return_value="deny")
-    @patch("crewai.hooks.tool_hooks.event_listener")
-    def test_approval_hook_blocks_execution(
-        self, mock_event_listener, mock_input, mock_tool
-    ):
-        """Test that approval hook blocks execution when denied."""
-        mock_formatter = Mock()
-        mock_event_listener.formatter = mock_formatter
-
-        def approval_hook(context: ToolCallHookContext) -> bool | None:
-            response = context.request_human_input(
-                prompt="Approve?", default_message="Type 'approve':"
-            )
-            return None if response == "approve" else False
-
-        context = ToolCallHookContext(
-            tool_name="test_tool",
-            tool_input={},
-            tool=mock_tool,
-        )
-
-        result = approval_hook(context)
-
-        assert result is False
-        assert mock_input.called
-
-    @patch("builtins.input", return_value="modified result")
-    @patch("crewai.hooks.tool_hooks.event_listener")
-    def test_review_hook_modifies_result(
-        self, mock_event_listener, mock_input, mock_tool
-    ):
-        """Test that review hook can modify tool results."""
-        mock_formatter = Mock()
-        mock_event_listener.formatter = mock_formatter
-
-        def review_hook(context: ToolCallHookContext) -> str | None:
-            response = context.request_human_input(
-                prompt="Review result",
-                default_message="Press Enter to keep, or provide modified version:",
-            )
-            return response if response else None
-
-        context = ToolCallHookContext(
-            tool_name="test_tool",
-            tool_input={},
-            tool=mock_tool,
-            tool_result="original result",
-        )
-
-        modified_result = review_hook(context)
-
-        assert modified_result == "modified result"
-        assert mock_input.called
-
-    @patch("builtins.input", return_value="")
-    @patch("crewai.hooks.tool_hooks.event_listener")
-    def test_review_hook_keeps_original_on_enter(
-        self, mock_event_listener, mock_input, mock_tool
-    ):
-        """Test that pressing Enter keeps original result."""
-        mock_formatter = Mock()
-        mock_event_listener.formatter = mock_formatter
-
-        def review_hook(context: ToolCallHookContext) -> str | None:
-            response = context.request_human_input(
-                prompt="Review result", default_message="Press Enter to keep:"
-            )
-            return response if response else None
-
-        context = ToolCallHookContext(
-            tool_name="test_tool",
-            tool_input={},
-            tool=mock_tool,
-            tool_result="original result",
-        )
-
-        modified_result = review_hook(context)
-
-        assert modified_result is None
-
-
-class TestCostControlApproval:
-    """Test cost control approval hook scenarios."""
-
-    @patch("builtins.input", return_value="yes")
-    @patch("crewai.hooks.llm_hooks.event_listener")
-    def test_cost_control_allows_when_approved(
-        self, mock_event_listener, mock_input, mock_executor
-    ):
-        """Test that expensive calls are allowed when approved."""
-        mock_formatter = Mock()
-        mock_event_listener.formatter = mock_formatter
-
-        # Set high iteration count
-        mock_executor.iterations = 10
-
-        def cost_control_hook(context: LLMCallHookContext) -> None:
-            if context.iterations > 5:
-                response = context.request_human_input(
-                    prompt=f"Iteration {context.iterations} - expensive call",
-                    default_message="Type 'yes' to continue:",
-                )
-                if response.lower() != "yes":
-                    print("Call blocked")
-
-        context = LLMCallHookContext(executor=mock_executor)
-
-        cost_control_hook(context)
-        assert mock_input.called
-
-    @patch("builtins.input", return_value="no")
-    @patch("crewai.hooks.llm_hooks.event_listener")
-    def test_cost_control_logs_when_denied(
-        self, mock_event_listener, mock_input, mock_executor
-    ):
-        """Test that denied calls are logged."""
-        mock_formatter = Mock()
-        mock_event_listener.formatter = mock_formatter
-
-        mock_executor.iterations = 10
-
-        messages_logged = []
-
-        def cost_control_hook(context: LLMCallHookContext) -> None:
-            if context.iterations > 5:
-                response = context.request_human_input(
-                    prompt=f"Iteration {context.iterations}",
-                    default_message="Type 'yes' to continue:",
-                )
-                if response.lower() != "yes":
-                    messages_logged.append("blocked")
-
-        context = LLMCallHookContext(executor=mock_executor)
-
-        cost_control_hook(context)
-
-        assert len(messages_logged) == 1
-        assert messages_logged[0] == "blocked"

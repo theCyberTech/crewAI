@@ -338,16 +338,27 @@ def test_azure_completion_with_tools():
         )
 
         crew = Crew(agents=[agent], tasks=[task])
-        crew.kickoff()
+        result = crew.kickoff()
 
-        assert mock_call.called
-
-        call_args = mock_call.call_args
-        call_kwargs = call_args[1] if len(call_args) > 1 else {}
-
-        if 'tools' in call_kwargs:
-            assert call_kwargs['tools'] is not None
-            assert len(call_kwargs['tools']) > 0
+        assert result.raw == "Task completed with tools."
+        assert mock_call.call_args.kwargs["tools"] == [
+            {
+                "type": "function",
+                "function": {
+                    "name": "sample_tool",
+                    "description": "A sample tool for testing",
+                    "parameters": {
+                        "properties": {
+                            "query": {"title": "Query", "type": "string"}
+                        },
+                        "required": ["query"],
+                        "type": "object",
+                        "additionalProperties": False,
+                    },
+                    "strict": True,
+                },
+            }
+        ]
 
 
 def test_azure_raises_error_when_endpoint_missing():
@@ -411,6 +422,7 @@ async def test_azure_aclose_is_noop_when_uninitialized():
         await llm.aclose()
         async with llm:
             pass
+        assert llm._async_client is None
 
 
 def test_azure_lazy_build_reads_env_vars_set_after_construction():
@@ -828,20 +840,27 @@ def test_azure_streaming_completion():
     llm = LLM(model="azure/gpt-4o-mini", stream=True)
     result = llm.call("Say hello")
 
-    assert result is not None
-    assert isinstance(result, str)
-    assert len(result) > 0
+    assert result == "Hello! How can I assist you today?"
 
 
 def test_azure_api_version_default():
     """
     Test that Azure API version defaults correctly
     """
-    llm = LLM(model="azure/gpt-4")
+    with patch.dict(os.environ, {
+        "AZURE_API_KEY": "test-key",
+        "AZURE_ENDPOINT": "https://test.openai.azure.com",
+    }, clear=True):
+        llm = LLM(model="azure/gpt-4")
+        assert llm._make_client_kwargs()["api_version"] == "2024-06-01"
 
-    from crewai.llms.providers.azure.completion import AzureCompletion
-    assert isinstance(llm, AzureCompletion)
-    assert llm.api_version is not None
+    with patch.dict(os.environ, {
+        "AZURE_API_KEY": "test-key",
+        "AZURE_ENDPOINT": "https://test.openai.azure.com",
+        "AZURE_API_VERSION": "2025-01-01-preview",
+    }, clear=True):
+        llm = LLM(model="azure/gpt-4")
+        assert llm._make_client_kwargs()["api_version"] == "2025-01-01-preview"
 
 
 def test_azure_function_calling_support():
@@ -1228,20 +1247,23 @@ def test_azure_completion_params_preparation_with_drop_params():
         "AZURE_API_KEY": "test-key",
         "AZURE_ENDPOINT": "https://models.inference.ai.azure.com"
     }):
+        messages = [{"role": "user", "content": "Hello"}]
+
+        llm = LLM(model="azure/gpt-4", stop=["STOP"], max_tokens=1000)
+        params = llm._prepare_completion_params(messages)
+        assert params["stop"] == ["STOP"]
+
         llm = LLM(
-            model="azure/o4-mini",
+            model="azure/gpt-4",
+            stop=["STOP"],
             drop_params=True,
             additional_drop_params=["stop"],
             max_tokens=1000
         )
-
-        from crewai.llms.providers.azure.completion import AzureCompletion
-        assert isinstance(llm, AzureCompletion)
-
-        messages = [{"role": "user", "content": "Hello"}]
         params = llm._prepare_completion_params(messages)
 
-        assert params.get('stop') == None
+        assert "stop" not in params
+        assert params["max_tokens"] == 1000
 
 
 @pytest.mark.vcr()
@@ -1305,11 +1327,24 @@ def test_azure_agent_kickoff_structured_output_without_tools():
         response_format=AnalysisResult,
     )
 
-    assert result.pydantic is not None, "Expected pydantic output but got None"
-    assert isinstance(result.pydantic, AnalysisResult), f"Expected AnalysisResult but got {type(result.pydantic)}"
-    assert result.pydantic.topic, "Topic should not be empty"
-    assert len(result.pydantic.key_points) > 0, "Should have at least one key point"
-    assert result.pydantic.summary, "Summary should not be empty"
+    assert result.pydantic == AnalysisResult(
+        topic="Benefits of Remote Work",
+        key_points=[
+            "Increased Flexibility: Employees can choose when and where to work, "
+            "leading to better work-life balance.",
+            "Cost Savings: Reduction in commuting costs for employees and office "
+            "space expenses for employers.",
+            "Access to a Wider Talent Pool: Companies can hire talent from anywhere, "
+            "not limited by geographic location.",
+            "Improved Productivity: Many employees report increased focus and "
+            "reduced distractions at home.",
+            "Environmental Benefits: Decreased commuting leads to lower carbon "
+            "emissions and reduced traffic congestion.",
+        ],
+        summary="Remote work offers significant advantages including flexibility, "
+        "cost savings, access to diverse talent, enhanced productivity, and "
+        "environmental benefits.",
+    )
 
 
 @pytest.mark.vcr()

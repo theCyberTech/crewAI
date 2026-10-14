@@ -70,8 +70,9 @@ def test_create_llm_with_invalid_model_string() -> None:
     with patch.dict(os.environ, {"OPENAI_API_KEY": "fake-key"}, clear=True):
         # For invalid model strings, create_llm succeeds but call() fails with API error
         llm = create_llm(llm_value="invalid-model")
-        assert llm is not None
         assert isinstance(llm, BaseLLM)
+        assert llm.model == "invalid-model"
+        assert llm.provider == "openai"
 
         # We expect some kind of API error (NotFoundError, etc.)
         with pytest.raises(Exception):  # noqa: B017
@@ -87,8 +88,9 @@ def test_create_llm_with_unknown_object_missing_attributes() -> None:
         llm = create_llm(llm_value=unknown_obj)
 
         # Should succeed because str(unknown_obj) provides a model name
-        assert llm is not None
         assert isinstance(llm, BaseLLM)
+        assert llm.model == str(unknown_obj)
+        assert llm.provider == "openai"
 
 
 def test_create_llm_with_none_uses_default_model() -> None:

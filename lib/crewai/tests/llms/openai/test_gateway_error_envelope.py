@@ -381,10 +381,8 @@ def test_length_finish_reason_still_raises_through_raw_response() -> None:
     body["choices"][0]["finish_reason"] = "length"
     llm = _make_llm(_json_responder(body))
 
-    with pytest.raises(Exception) as caught:
+    with pytest.raises(openai.LengthFinishReasonError):
         llm.call("hi", response_model=Answer)
-
-    assert isinstance(caught.value, openai.LengthFinishReasonError)
 
 
 def test_non_json_200_body_is_left_to_existing_handling() -> None:
@@ -437,7 +435,7 @@ def test_sync_streaming_error_chunk_already_surfaces_upstream_message() -> None:
 
     llm = _make_llm(respond, stream=True)
 
-    with pytest.raises(Exception, match="The operation was aborted"):
+    with pytest.raises(openai.APIError, match="The operation was aborted"):
         llm.call("hi")
 
 
@@ -452,7 +450,7 @@ async def test_async_streaming_error_chunk_already_surfaces_upstream_message() -
 
     llm = _make_llm(respond, stream=True)
 
-    with pytest.raises(Exception, match="The operation was aborted"):
+    with pytest.raises(openai.APIError, match="The operation was aborted"):
         await llm.acall("hi")
 
 

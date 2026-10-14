@@ -50,7 +50,8 @@ class TestToolCallRecognition:
     """The executor must recognize Responses-shaped tool calls."""
 
     def test_recognizes_responses_shape(self):
-        assert is_tool_call_list([RESPONSES_TOOL_CALL])
+        assert is_tool_call_list([RESPONSES_TOOL_CALL]) is True
+        assert is_tool_call_list([{"id": "call_abc", "name": "multiply"}]) is False
 
     def test_extracts_arguments_from_top_level(self):
         """Previously fell through to `input` and silently yielded {}."""
@@ -72,7 +73,7 @@ class TestToolCallRecognition:
     )
     def test_other_provider_shapes_still_work(self, tool_call, expected_args):
         """Chat Completions and Bedrock shapes must be unaffected."""
-        assert is_tool_call_list([tool_call])
+        assert is_tool_call_list([tool_call]) is True
         assert extract_tool_call_info(tool_call)[2] == expected_args
 
     def test_raw_responses_item_uses_call_id_not_item_id(self):
@@ -187,7 +188,11 @@ class TestResponsesInputTranslation:
             {"role": "tool", "tool_call_id": call_id, "content": "391"}
         )
 
-        assert assistant[0]["call_id"] == result[0]["call_id"] == call_id
+        assert (
+            assistant[0]["call_id"]
+            == result[0]["call_id"]
+            == "call_dEoHFrYnOgWYvk17FymdcDZ5"
+        )
 
 
 class TestPreparedParams:

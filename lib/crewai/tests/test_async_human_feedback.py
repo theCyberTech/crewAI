@@ -238,18 +238,7 @@ class TestHumanFeedbackProvider:
 
         provider = SyncProvider()
         assert isinstance(provider, HumanFeedbackProvider)
-
-    def test_protocol_compliance_async_provider(self) -> None:
-        """Test that async provider complies with protocol."""
-
-        class AsyncProvider:
-            def request_feedback(
-                self, context: PendingFeedbackContext, flow: Flow
-            ) -> str:
-                raise HumanFeedbackPending(context=context)
-
-        provider = AsyncProvider()
-        assert isinstance(provider, HumanFeedbackProvider)
+        assert not isinstance(object(), HumanFeedbackProvider)
 
 
 # ConsoleProvider Tests
@@ -336,7 +325,11 @@ class TestSQLitePendingFeedback:
                 state_data={"key": "value"},
             )
 
-            assert persistence.load_pending_feedback("clear-test") is not None
+            loaded = persistence.load_pending_feedback("clear-test")
+            assert loaded is not None
+            loaded_state, loaded_context = loaded
+            assert loaded_state == {"key": "value"}
+            assert loaded_context.flow_id == "clear-test"
 
             persistence.clear_pending_feedback("clear-test")
 
@@ -884,19 +877,21 @@ class TestAsyncHumanFeedbackIntegration:
             ) -> str:
                 raise HumanFeedbackPending(context=context)
 
+        provider = MockProvider()
+
         class TestFlow(Flow):
             @start()
             @human_feedback(
                 message="Review:",
-                provider=MockProvider(),
+                provider=provider,
             )
             def review(self):
                 return "content"
 
         flow = TestFlow()
         method = getattr(flow, "review")
-        assert hasattr(method, "__human_feedback_config__")
-        assert method.__human_feedback_config__.provider is not None
+        assert method.__human_feedback_config__.provider is provider
+        assert method.__human_feedback_config__.message == "Review:"
 
     @patch("crewai.flow.runtime.crewai_event_bus.emit")
     def test_async_provider_pauses_flow(self, mock_emit: MagicMock) -> None:
@@ -943,6 +938,9 @@ class TestAsyncHumanFeedbackIntegration:
 
             persisted = persistence.load_pending_feedback(flow_id)
             assert persisted is not None
+            _, persisted_context = persisted
+            assert persisted_context.method_name == "generate"
+            assert persisted_context.method_output == "generated content"
 
     @patch("crewai.flow.runtime.crewai_event_bus.emit")
     def test_full_async_flow_cycle(self, mock_emit: MagicMock) -> None:
@@ -1034,13 +1032,18 @@ class TestAutoPersistence:
         result = flow.kickoff()
 
         assert isinstance(result, HumanFeedbackPending)
+        assert result.callback_info == {"paused": True}
 
         # Persistence should have been auto-created
-        assert flow.persistence is not None
+        assert isinstance(flow.persistence, SQLiteFlowPersistence)
 
         flow_id = result.context.flow_id
         loaded = flow.persistence.load_pending_feedback(flow_id)
         assert loaded is not None
+        _, loaded_context = loaded
+        assert loaded_context.method_name == "generate"
+        assert loaded_context.method_output == "content"
+        assert loaded_context.message == "Review:"
 
 
 class TestCollapseToOutcomeJsonParsing:

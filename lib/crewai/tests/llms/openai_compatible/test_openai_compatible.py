@@ -1,7 +1,8 @@
 """Tests for OpenAI-compatible providers."""
 
+import json
 import os
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -333,18 +334,30 @@ class TestLLMIntegration:
 
 
 class TestCallMocking:
-    """Tests for mocking the call method."""
+    """Tests for calling the completion against a mocked client."""
 
-    def test_call_method_can_be_mocked(self):
-        """Test that the call method can be mocked for testing."""
+    @pytest.mark.asyncio
+    async def test_acall_returns_completion_text(self):
+        """acall sends the prompt to the provider and returns the reply text."""
         completion = OpenAICompatibleCompletion(model="llama3", provider="ollama")
+        parsed = MagicMock(
+            choices=[
+                MagicMock(message=MagicMock(content="Hello from llama3", tool_calls=None))
+            ],
+            usage=MagicMock(prompt_tokens=10, completion_tokens=20, total_tokens=30),
+        )
+        client = MagicMock()
+        client.chat.completions.with_raw_response.create = AsyncMock(
+            return_value=MagicMock(
+                text=json.dumps({"choices": [{"index": 0}]}),
+                **{"parse.return_value": parsed},
+            )
+        )
 
-        with patch.object(completion, "call", return_value="Mocked response"):
-            result = completion.call("Test message")
-            assert result == "Mocked response"
+        with patch.object(completion, "_get_async_client", return_value=client):
+            result = await completion.acall("Test message")
 
-    def test_acall_method_exists(self):
-        """Test that acall method exists for async calls."""
-        completion = OpenAICompatibleCompletion(model="llama3", provider="ollama")
-        assert hasattr(completion, "acall")
-        assert callable(completion.acall)
+        assert result == "Hello from llama3"
+        sent = client.chat.completions.with_raw_response.create.call_args.kwargs
+        assert sent["model"] == "llama3"
+        assert sent["messages"] == [{"role": "user", "content": "Test message"}]

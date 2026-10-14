@@ -51,7 +51,7 @@ class TestDiscoverSkills:
             "---\nname: Wrong-Name\ndescription: bad\n---\n"
         )
         skills = discover_skills(tmp_path)
-        assert len(skills) == 1
+        assert [s.name for s in skills] == ["good-skill"]
 
     def test_empty_directory(self, tmp_path: Path) -> None:
         skills = discover_skills(tmp_path)
@@ -232,6 +232,7 @@ class TestLoadResources:
         skill = load_skill_metadata(skill_dir)
         full = load_resources(skill)
         assert full.disclosure_level == RESOURCES
+        assert full.resource_files == {"scripts": ["run.sh"]}
 
 
 class TestFormatSkillContext:
@@ -243,8 +244,7 @@ class TestFormatSkillContext:
             frontmatter=fm, path=tmp_path, disclosure_level=METADATA
         )
         ctx = format_skill_context(skill)
-        assert '<skill name="test-skill">' in ctx
-        assert "A skill" in ctx
+        assert ctx == '<skill name="test-skill">\nA skill\n</skill>'
 
     def test_instructions_level(self, tmp_path: Path) -> None:
         fm = SkillFrontmatter(name="test-skill", description="A skill")
@@ -255,8 +255,7 @@ class TestFormatSkillContext:
             instructions="Do these things.",
         )
         ctx = format_skill_context(skill)
-        assert '<skill name="test-skill">' in ctx
-        assert "Do these things." in ctx
+        assert ctx == '<skill name="test-skill">\nA skill\n\nDo these things.\n</skill>'
 
     def test_no_instructions_at_instructions_level(self, tmp_path: Path) -> None:
         fm = SkillFrontmatter(name="test-skill", description="A skill")
@@ -282,9 +281,17 @@ class TestFormatSkillContext:
             },
         )
         ctx = format_skill_context(skill)
-        assert "### Available Resources" in ctx
-        assert "**assets/**: data.json, config.yaml" in ctx
-        assert "**scripts/**: run.sh" in ctx
+        assert ctx == (
+            '<skill name="test-skill">\n'
+            "A skill\n"
+            "\n"
+            "Do things.\n"
+            "\n"
+            "### Available Resources\n"
+            "- **assets/**: data.json, config.yaml\n"
+            "- **scripts/**: run.sh\n"
+            "</skill>"
+        )
 
     def test_resources_level_empty_files(self, tmp_path: Path) -> None:
         fm = SkillFrontmatter(name="test-skill", description="A skill")
@@ -296,4 +303,4 @@ class TestFormatSkillContext:
             resource_files={},
         )
         ctx = format_skill_context(skill)
-        assert "### Available Resources" not in ctx
+        assert ctx == '<skill name="test-skill">\nA skill\n\nDo things.\n</skill>'

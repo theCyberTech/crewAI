@@ -97,13 +97,16 @@ def test_setting_cache_function():
     class MyCustomTool(BaseTool):
         name: str = "Name of my tool"
         description: str = "Clear description for what this tool is useful for, your agent will need this information to use it."
-        cache_function: Callable = lambda: False
+        cache_function: Callable = lambda _args, result: result != "skip"
 
         def _run(self, question: str) -> str:
             return question
 
     my_tool = MyCustomTool()
-    assert not my_tool.cache_function()
+    assert my_tool.cache_function({"question": "skip"}, "skip") is False
+    assert my_tool.cache_function({"question": "keep"}, "keep") is True
+    structured = my_tool.to_structured_tool()
+    assert structured.cache_function({"question": "skip"}, "skip") is False
 
 
 def test_default_cache_function_is_true():
@@ -115,7 +118,8 @@ def test_default_cache_function_is_true():
             return question
 
     my_tool = MyCustomTool()
-    assert my_tool.cache_function()
+    assert my_tool.cache_function({"question": "q"}, "q") is True
+    assert my_tool.to_structured_tool().cache_function({"question": "q"}, "q") is True
 
 
 def test_result_as_answer_in_tool_decorator():
@@ -181,7 +185,7 @@ def test_async_run_returns_coroutine():
     result = tool._run(input_text="hello")
 
     assert asyncio.iscoroutine(result)
-    result.close()
+    assert asyncio.run(result) == "Processed hello asynchronously"
 
 
 def test_run_calls_asyncio_run_for_async_tools():

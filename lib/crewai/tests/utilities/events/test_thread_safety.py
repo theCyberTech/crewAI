@@ -116,9 +116,17 @@ def test_concurrent_emit_and_registration():
         emit_thread.join()
         register_thread.join()
 
+        crewai_event_bus.emit(
+            "emitter", ThreadSafetyTestEvent(type="after_registration")
+        )
+
         time.sleep(0.5)
 
-        assert len(received_events) > 0
+        received_types = [event.type for event in received_events]
+        assert received_types.count("after_registration") == 10
+        assert set(received_types) <= {f"emit_event_{i}" for i in range(50)} | {
+            "after_registration"
+        }
 
 
 def test_stress_test_rapid_emit():

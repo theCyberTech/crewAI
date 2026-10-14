@@ -108,6 +108,8 @@ class TestAzureResponsesInit:
 
         assert comp._client is None
         assert comp._async_client is None
+        completions = _create_azure_responses(api="completions")
+        assert type(completions._client).__name__ == "ChatCompletionsClient"
 
     def test_responses_base_url_from_base_endpoint(self, mock_openai_completion):
         mock_cls, _ = mock_openai_completion
@@ -191,13 +193,14 @@ class TestAzureResponsesInit:
         """Params left at defaults should not be passed to the delegate."""
         mock_cls, _ = mock_openai_completion
         _create_azure_responses()
-        call_kwargs = mock_cls.call_args[1]
-        # These should NOT be in kwargs because they were not set
-        assert "temperature" not in call_kwargs
-        assert "reasoning_effort" not in call_kwargs
-        assert "instructions" not in call_kwargs
-        assert "store" not in call_kwargs
-        assert "max_completion_tokens" not in call_kwargs
+        mock_cls.assert_called_once_with(
+            model="gpt-4o",
+            api_key="test-azure-key",
+            base_url="https://myresource.openai.azure.com/openai/v1/",
+            api="responses",
+            provider="openai",
+            stream=False,
+        )
 
 
 # Call delegation tests (VCR cassette-based)
@@ -213,8 +216,7 @@ class TestAzureResponsesCall:
         llm = LLM(model="azure/gpt-5.2-chat", api="responses")
         result = llm.call("Say hello in one sentence.")
 
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == "Hello! \U0001f60a"
 
     @pytest.mark.vcr()
     def test_call_with_tools_delegates(self):
@@ -227,8 +229,7 @@ class TestAzureResponsesCall:
         )
         result = llm.call("What is 2 + 2? Be brief.")
 
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == "2 + 2 = 4."
 
     @pytest.mark.vcr()
     def test_completions_call_unchanged(self):
@@ -238,8 +239,8 @@ class TestAzureResponsesCall:
         llm = LLM(model="azure/gpt-5.2-chat")
         result = llm.call("Say hello in one sentence.")
 
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == "Hello! \U0001f60a"
+        assert llm._responses_delegate is None
 
 
 # Delegated property & method tests
@@ -294,6 +295,9 @@ class TestAzureResponsesProperties:
             endpoint="https://res.openai.azure.com",
         )
         comp.reset_chain()
+
+        assert comp._responses_delegate is None
+        assert comp.last_response_id is None
 
 
 # Feature-support method tests
@@ -357,6 +361,9 @@ class TestAzureResponsesFeatures:
         )
         config = comp.to_config_dict()
         assert "api" not in config
+        assert config["endpoint"] == (
+            "https://res.openai.azure.com/openai/deployments/gpt-4o"
+        )
 
 
 # LLM factory integration test

@@ -121,8 +121,12 @@ class TestCrewMultimodalOpenAI:
 
         result = crew.kickoff(input_files={"chart": image_file})
 
-        assert result.raw
-        assert len(result.raw) > 0
+        assert result.raw == {
+            "openai/gpt-4o-mini": 'The file "revenue_chart.png" is a line graph titled "Revenue Over Time," displaying revenue in millions of dollars from the year 2020 to 2024, with an upward trend.',
+            "openai/gpt-4o": 'The file is a line chart titled "Revenue Over Time," showing revenue in millions of dollars from 2020 to 2024.',
+            "openai/o4-mini": "The file “revenue_chart.png” is a line chart titled “Revenue Over Time” depicting annual revenue increasing from $100 M in 2020 to $300 M in 2024.",
+            "openai/gpt-4.1-mini": 'A line chart titled "Revenue Over Time" displaying revenue growth from $100 million in 2020 to $300 million in 2024, with labeled axes for Year (x-axis) and Revenue in million dollars (y-axis), showing a steady linear increase.',
+        }[model]
 
     @pytest.mark.vcr()
     @pytest.mark.parametrize("model", OPENAI_IMAGE_MODELS)
@@ -133,8 +137,12 @@ class TestCrewMultimodalOpenAI:
 
         result = crew.kickoff(input_files={"chart": ImageFile(source=image_bytes)})
 
-        assert result.raw
-        assert len(result.raw) > 0
+        assert result.raw == {
+            "openai/gpt-4o-mini": "The file is a line chart depicting revenue over time from 2020 to 2024, showing a steady increase from $100 million to $300 million.",
+            "openai/gpt-4o": "The chart depicts a linear increase in revenue over time from 2020 to 2024, ranging from $100M to $300M.",
+            "openai/o4-mini": "The file is a line chart titled “Revenue Over Time” showing revenue rising linearly from $100 M in 2020 to $300 M in 2024.",
+            "openai/gpt-4.1-mini": 'The file contains a line chart titled "Revenue Over Time" showing a linear increase in revenue from $100M in 2020 to $300M in 2024, with the x-axis labeled "Year" and the y-axis labeled "Revenue ($M)".',
+        }[model]
 
     @pytest.mark.vcr()
     @pytest.mark.parametrize("model", OPENAI_IMAGE_MODELS)
@@ -145,8 +153,12 @@ class TestCrewMultimodalOpenAI:
 
         result = crew.kickoff(input_files={"chart": File(source=image_bytes)})
 
-        assert result.raw
-        assert len(result.raw) > 0
+        assert result.raw == {
+            "openai/gpt-4o-mini": 'The file is a chart titled "Revenue Over Time," displaying a line graph that shows revenue increasing from $100 million in 2020 to $300 million by the middle of 2024.',
+            "openai/gpt-4o": 'A line chart titled "Revenue Over Time" showing a continuous increase from $100M in 2020 to $300M in 2024.',
+            "openai/o4-mini": "A line chart titled “Revenue Over Time” showing revenue rising steadily from $100 M in 2020 to $300 M in 2024.",
+            "openai/gpt-4.1-mini": 'The file is a line chart titled "Revenue Over Time" that shows a steady increase in revenue from $100 million in 2020 to $300 million in 2024, with the x-axis labeled "Year" and the y-axis labeled "Revenue ($M)".',
+        }[model]
 
 
 class TestCrewMultimodalOpenAIResponses:
@@ -163,8 +175,10 @@ class TestCrewMultimodalOpenAIResponses:
 
         result = crew.kickoff(input_files={"chart": image_file})
 
-        assert result.raw
-        assert len(result.raw) > 0
+        assert result.raw == {
+            "openai/gpt-4o-mini": 'The file "revenue_chart.png" is a graphical representation of revenue growth over time, showing a steady increase from 100 million to 300 million dollars from 2020 to 2024.',
+            "openai/o4-mini": "The file revenue_chart.png is a line chart depicting annual revenue increasing from $100 M in 2020 to $300 M in 2024.",
+        }[model]
 
     @pytest.mark.vcr()
     @pytest.mark.parametrize("model,api", OPENAI_RESPONSES_MODELS)
@@ -175,8 +189,10 @@ class TestCrewMultimodalOpenAIResponses:
 
         result = crew.kickoff(input_files={"document": pdf_file})
 
-        assert result.raw
-        assert len(result.raw) > 0
+        assert result.raw == {
+            "openai/gpt-4o-mini": "The file is a document containing text-based content, specifics not provided.",
+            "openai/o4-mini": "The file named “document” is a multi-page PDF document containing formatted text and embedded images.",
+        }[model]
 
 
 class TestCrewMultimodalAnthropic:
@@ -191,8 +207,10 @@ class TestCrewMultimodalAnthropic:
 
         result = crew.kickoff(input_files={"chart": image_file})
 
-        assert result.raw
-        assert len(result.raw) > 0
+        assert result.raw == {
+            "anthropic/claude-3-5-haiku-20241022": "A linear graph depicting revenue growth over time from 2020 to 2024, showing a consistent upward trend in financial performance.",
+            "anthropic/claude-sonnet-4-20250514": "The file is a bar chart showing monthly revenue data from January to December, with values ranging from approximately $10,000 to $45,000, displaying an overall upward trend throughout the year.",
+        }[model]
 
     @pytest.mark.vcr()
     @pytest.mark.parametrize("model", ANTHROPIC_MODELS)
@@ -203,8 +221,12 @@ class TestCrewMultimodalAnthropic:
 
         result = crew.kickoff(input_files={"document": pdf_file})
 
-        assert result.raw
-        assert len(result.raw) > 0
+        assert result.raw.startswith(
+            {
+                "anthropic/claude-3-5-haiku-20241022": "A blank white PDF document with no visible text or content.",
+                "anthropic/claude-sonnet-4-20250514": 'The file "agents.pdf" is a research paper titled "Generative Agents: Interactive Simulacra of Human Behavior"',
+            }[model]
+        )
 
     @pytest.mark.vcr()
     @pytest.mark.parametrize("model", ANTHROPIC_MODELS)
@@ -219,8 +241,10 @@ class TestCrewMultimodalAnthropic:
             input_files={"chart": image_file, "document": pdf_file}
         )
 
-        assert result.raw
-        assert len(result.raw) > 0
+        assert result.raw == {
+            "anthropic/claude-3-5-haiku-20241022": '1. "revenue_chart.png": A linear graph showing revenue increasing steadily from 2020 to 2024, ranging from about 100 to 300 on the y-axis\n2. "document" (PDF): A blank white page with no visible content',
+            "anthropic/claude-sonnet-4-20250514": "I can see two files: a revenue chart image (revenue_chart.png) showing financial data visualization and a PDF document about agents (agents.pdf) containing text-based information.",
+        }[model]
 
 
 class TestCrewMultimodalGemini:
@@ -235,8 +259,9 @@ class TestCrewMultimodalGemini:
 
         result = crew.kickoff(input_files={"chart": image_file})
 
-        assert result.raw
-        assert len(result.raw) > 0
+        assert result.raw == {
+            "gemini/gemini-2.0-flash": "The file is a line chart depicting revenue growth from 2020 to 2024.",
+        }[model]
 
     @pytest.mark.vcr()
     @pytest.mark.parametrize("model", GEMINI_MODELS)
@@ -247,8 +272,9 @@ class TestCrewMultimodalGemini:
 
         result = crew.kickoff(input_files={"readme": text_file})
 
-        assert result.raw
-        assert len(result.raw) > 0
+        assert result.raw == {
+            "gemini/gemini-2.0-flash": "Review Guidelines\n\n1. Be clear and concise: Write feedback that is easy to understand.\n2. Focus on behavior and outcomes: Describe what happened and why it matters.\n3. Be specific: Provide examples to support your points.\n4. Balance positives and improvements: Highlight strengths and areas to grow.\n5. Be respectful and constructive: Assume positive intent and offer solutions.\n6. Use objective criteria: Reference goals, metrics, or expectations where possible.\n7. Suggest next steps: Recommend actionable ways to improve.\n8. Proofread: Check tone, grammar, and clarity before submitting.",
+        }[model]
 
     @pytest.mark.vcr()
     @pytest.mark.parametrize("model", GEMINI_MODELS)
@@ -259,8 +285,9 @@ class TestCrewMultimodalGemini:
 
         result = crew.kickoff(input_files={"video": video_file})
 
-        assert result.raw
-        assert len(result.raw) > 0
+        assert result.raw == {
+            "gemini/gemini-2.0-flash": 'The file "sample_video.mp4" is a short video of a white square moving from left to right on a blue background.',
+        }[model]
 
     @pytest.mark.vcr()
     @pytest.mark.parametrize("model", GEMINI_MODELS)
@@ -271,8 +298,9 @@ class TestCrewMultimodalGemini:
 
         result = crew.kickoff(input_files={"audio": audio_file})
 
-        assert result.raw
-        assert len(result.raw) > 0
+        assert result.raw == {
+            "gemini/gemini-2.0-flash": 'The file "audio" (sample_audio.wav) appears to be a short audio recording, possibly containing speech or other sound events.',
+        }[model]
 
     @pytest.mark.vcr()
     @pytest.mark.parametrize("model", GEMINI_MODELS)
@@ -290,8 +318,9 @@ class TestCrewMultimodalGemini:
             input_files={"chart": image_file, "readme": text_file}
         )
 
-        assert result.raw
-        assert len(result.raw) > 0
+        assert result.raw == {
+            "gemini/gemini-2.0-flash": "The file revenue_chart.png is a line graph depicting revenue growth from 2020 to 2024, and review_guidelines.txt is a document outlining best practices for writing effective reviews.",
+        }[model]
 
 
 class TestCrewMultimodalBedrock:
@@ -306,8 +335,9 @@ class TestCrewMultimodalBedrock:
 
         result = crew.kickoff(input_files={"chart": image_file})
 
-        assert result.raw
-        assert len(result.raw) > 0
+        assert result.raw == {
+            "bedrock/us.anthropic.claude-sonnet-4-6": "A bar chart displaying revenue data over time, showing financial performance metrics across different periods.",
+        }[model]
 
     @pytest.mark.vcr()
     @pytest.mark.parametrize("model", BEDROCK_MODELS)
@@ -318,8 +348,9 @@ class TestCrewMultimodalBedrock:
 
         result = crew.kickoff(input_files={"document": pdf_file})
 
-        assert result.raw
-        assert len(result.raw) > 0
+        assert result.raw == {
+            "bedrock/us.anthropic.claude-sonnet-4-6": 'The file "agents.pdf" is an academic/technical document discussing AI agents, their architectures, components (such as memory, planning, and tool use), and how large language models (LLMs) can be used to power autonomous agent systems.',
+        }[model]
 
 
 class TestCrewMultimodalFileTypes:
@@ -331,7 +362,7 @@ class TestCrewMultimodalFileTypes:
         llm = LLM(model="openai/gpt-4o-mini")
         crew = _create_analyst_crew(llm)
         result = crew.kickoff(input_files={"image": image_file})
-        assert result.raw
+        assert result.raw == 'The file "revenue_chart.png" contains a line graph titled "Revenue Over Time," displaying revenue in millions of dollars from 2020 to 2024, showing a consistent upward trend.'
 
     @pytest.mark.vcr()
     def test_pdf_anthropic(self, pdf_file: PDFFile) -> None:
@@ -339,7 +370,7 @@ class TestCrewMultimodalFileTypes:
         llm = LLM(model="anthropic/claude-3-5-haiku-20241022")
         crew = _create_analyst_crew(llm)
         result = crew.kickoff(input_files={"document": pdf_file})
-        assert result.raw
+        assert result.raw == "A blank white PDF document with no text or visual elements."
 
     @pytest.mark.vcr()
     def test_pdf_openai_responses(self, pdf_file: PDFFile) -> None:
@@ -347,7 +378,7 @@ class TestCrewMultimodalFileTypes:
         llm = LLM(model="openai/gpt-4o-mini", api="responses")
         crew = _create_analyst_crew(llm)
         result = crew.kickoff(input_files={"document": pdf_file})
-        assert result.raw
+        assert result.raw == 'The file "document" contains textual content that may include a range of topics or information, but specific details are not available for analysis.'
 
     @pytest.mark.vcr()
     def test_text_gemini(self, text_file: TextFile) -> None:
@@ -355,7 +386,7 @@ class TestCrewMultimodalFileTypes:
         llm = LLM(model="gemini/gemini-2.0-flash")
         crew = _create_analyst_crew(llm)
         result = crew.kickoff(input_files={"readme": text_file})
-        assert result.raw
+        assert result.raw == "Review Guidelines\n\n1. Be clear and concise: Write feedback that is easy to understand.\n2. Focus on behavior and outcomes: Describe what happened and why it matters.\n3. Be specific: Provide examples to support your points.\n4. Balance positives and improvements: Highlight strengths and areas to grow.\n5. Be respectful and constructive: Assume positive intent and offer solutions.\n6. Use objective criteria: Reference goals, metrics, or expectations where possible.\n7. Suggest next steps: Recommend actionable ways to improve.\n8. Proofread: Check tone, grammar, and clarity before submitting."
 
     @pytest.mark.vcr()
     def test_video_gemini(self, video_file: VideoFile) -> None:
@@ -363,7 +394,7 @@ class TestCrewMultimodalFileTypes:
         llm = LLM(model="gemini/gemini-2.0-flash")
         crew = _create_analyst_crew(llm)
         result = crew.kickoff(input_files={"video": video_file})
-        assert result.raw
+        assert result.raw == 'The file "sample_video.mp4" is a short video of a white square moving from left to right on a blue background.'
 
     @pytest.mark.vcr()
     def test_audio_gemini(self, audio_file: AudioFile) -> None:
@@ -371,7 +402,7 @@ class TestCrewMultimodalFileTypes:
         llm = LLM(model="gemini/gemini-2.0-flash")
         crew = _create_analyst_crew(llm)
         result = crew.kickoff(input_files={"audio": audio_file})
-        assert result.raw
+        assert result.raw == 'The file "audio" (sample_audio.wav) is a WAV audio file containing a sine wave.'
 
 
 class TestCrewMultimodalUnsupportedTypes:
@@ -397,7 +428,7 @@ class TestCrewMultimodalUnsupportedTypes:
 
         result = crew.kickoff(input_files={"video": video_file})
 
-        assert result.raw
+        assert result.raw == "video/mp4"
         # Should mention video or the filename since it can't directly process it
 
     @pytest.mark.vcr()
@@ -420,7 +451,7 @@ class TestCrewMultimodalUnsupportedTypes:
 
         result = crew.kickoff(input_files={"audio": audio_file})
 
-        assert result.raw
+        assert result.raw == "wav"
 
 
 class TestCrewMultimodalFileUpload:
@@ -434,8 +465,7 @@ class TestCrewMultimodalFileUpload:
 
         result = crew.kickoff(input_files={"chart": image_file})
 
-        assert result.raw
-        assert len(result.raw) > 0
+        assert result.raw == "A line graph depicting revenue growth over time from 2020 to 2024, with a consistent upward linear trend."
 
     @pytest.mark.vcr()
     def test_image_upload_openai_responses(self, image_file: ImageFile) -> None:
@@ -445,8 +475,7 @@ class TestCrewMultimodalFileUpload:
 
         result = crew.kickoff(input_files={"chart": image_file})
 
-        assert result.raw
-        assert len(result.raw) > 0
+        assert result.raw == 'The file "revenue_chart.png" is a line graph illustrating revenue growth over time from 2020 to 2024, with a clear upward trend indicating increasing revenue in millions of dollars.'
 
     @pytest.mark.vcr()
     def test_pdf_upload_anthropic(self, pdf_file: PDFFile) -> None:
@@ -456,5 +485,4 @@ class TestCrewMultimodalFileUpload:
 
         result = crew.kickoff(input_files={"document": pdf_file})
 
-        assert result.raw
-        assert len(result.raw) > 0
+        assert result.raw == 'This is a research paper titled "Architecting Resilient LLM Agents: A Guide to Secure Plan-then-Execute Implementations" by Ron F. Del Rosario, Klaudia Krawiecka, and Christian Schroeder de Witt. The paper provides a comprehensive guide to the Plan-then-Execute (P-t-E) architectural pattern for Large Language Model agents, focusing on security, predictability, and performance across different implementation frameworks like LangChain, CrewAI, and AutoGen.'

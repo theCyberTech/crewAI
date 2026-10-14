@@ -1,5 +1,6 @@
 """Test for version management."""
 
+import importlib.metadata
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -36,9 +37,7 @@ class TestVersionChecking:
 
     def test_get_crewai_version(self) -> None:
         """Test getting current crewai version."""
-        version = get_crewai_version()
-        assert isinstance(version, str)
-        assert len(version) > 0
+        assert get_crewai_version() == importlib.metadata.version("crewai")
 
     def test_get_cache_file(self) -> None:
         """Test cache file path generation."""
@@ -388,6 +387,14 @@ class TestConsoleFormatterVersionCheck:
         with patch.object(formatter.console, "print") as mock_print:
             formatter._show_version_update_message_if_needed()
             assert mock_print.call_count == 2
+            panel = mock_print.call_args_list[0][0][0]
+            assert panel.title == "✨ Update Available ✨"
+            assert panel.renderable == (
+                "A new version of CrewAI is available!\n\n"
+                "Current version: 1.0.0\n"
+                "Latest version:  2.0.0\n\n"
+                "To update, run: uv sync --upgrade-package crewai"
+            )
 
     @patch("crewai.events.utils.console_formatter.is_newer_version_available")
     def test_version_message_hides_when_verbose_false(

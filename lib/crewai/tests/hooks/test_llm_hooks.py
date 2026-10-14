@@ -16,6 +16,7 @@ from crewai.hooks.llm_hooks import (
     register_after_llm_call_hook,
     register_before_llm_call_hook,
 )
+from crewai.utilities.agent_utils import _setup_after_llm_call_hooks
 import pytest
 
 
@@ -113,21 +114,7 @@ class TestBeforeLLMCallHooks:
         register_before_llm_call_hook(hook2)
         hooks = get_before_llm_call_hooks()
 
-        assert len(hooks) == 2
-        assert hook1 in hooks
-        assert hook2 in hooks
-
-    def test_before_hook_can_modify_messages(self, mock_executor):
-        """Test that before hooks can modify messages in-place."""
-
-        def add_message_hook(context):
-            context.messages.append({"role": "system", "content": "Added by hook"})
-
-        context = LLMCallHookContext(executor=mock_executor)
-        add_message_hook(context)
-
-        assert len(context.messages) == 2
-        assert context.messages[1]["content"] == "Added by hook"
+        assert hooks == [hook1, hook2]
 
     def test_get_before_hooks_returns_copy(self):
         """Test that get_before_llm_call_hooks returns a copy."""
@@ -171,9 +158,7 @@ class TestAfterLLMCallHooks:
         register_after_llm_call_hook(hook2)
         hooks = get_after_llm_call_hooks()
 
-        assert len(hooks) == 2
-        assert hook1 in hooks
-        assert hook2 in hooks
+        assert hooks == [hook1, hook2]
 
     def test_after_hook_can_modify_response(self, mock_executor):
         """Test that after hooks can modify the response."""
@@ -184,8 +169,12 @@ class TestAfterLLMCallHooks:
                 return context.response.replace("Original", "Modified")
             return None
 
-        context = LLMCallHookContext(executor=mock_executor, response=original_response)
-        modified = modify_response_hook(context)
+        register_after_llm_call_hook(modify_response_hook)
+        mock_executor.after_llm_call_hooks = get_after_llm_call_hooks()
+
+        modified = _setup_after_llm_call_hooks(
+            mock_executor, original_response, printer=Mock(), verbose=False
+        )
 
         assert modified == "Modified response"
 
@@ -196,11 +185,14 @@ class TestAfterLLMCallHooks:
         def no_change_hook(context):
             return None
 
-        context = LLMCallHookContext(executor=mock_executor, response=original_response)
-        result = no_change_hook(context)
+        register_after_llm_call_hook(no_change_hook)
+        mock_executor.after_llm_call_hooks = get_after_llm_call_hooks()
 
-        assert result is None
-        assert context.response == original_response
+        result = _setup_after_llm_call_hooks(
+            mock_executor, original_response, printer=Mock(), verbose=False
+        )
+
+        assert result == "Original response"
 
     def test_get_after_hooks_returns_copy(self):
         """Test that get_after_llm_call_hooks returns a copy."""
@@ -260,15 +252,11 @@ class TestLLMHooksIntegration:
         register_after_llm_call_hook(hook1)
         register_after_llm_call_hook(hook2)
 
-        context = LLMCallHookContext(executor=mock_executor, response="Original")
-        hooks = get_after_llm_call_hooks()
+        mock_executor.after_llm_call_hooks = get_after_llm_call_hooks()
 
-        result = context.response
-        for hook in hooks:
-            context.response = result
-            modified = hook(context)
-            if modified is not None:
-                result = modified
+        result = _setup_after_llm_call_hooks(
+            mock_executor, "Original", printer=Mock(), verbose=False
+        )
 
         assert result == "Original [hook1] [hook2]"
 
@@ -283,8 +271,6 @@ class TestLLMHooksIntegration:
         non-BaseModel responses now pass through untouched; hooks still fire on
         textual responses.
         """
-        from crewai.utilities.agent_utils import _setup_after_llm_call_hooks
-
         observed = []
 
         def observer(context):
@@ -311,20 +297,30 @@ class TestLLMHooksIntegration:
         def test_hook(context):
             pass
 
+        def other_hook(context):
+            pass
+
         register_before_llm_call_hook(test_hook)
-        unregister_before_llm_call_hook(test_hook)
-        hooks = get_before_llm_call_hooks()
-        assert len(hooks) == 0
+        register_before_llm_call_hook(other_hook)
+
+        assert unregister_before_llm_call_hook(test_hook) is True
+        assert get_before_llm_call_hooks() == [other_hook]
+        assert unregister_before_llm_call_hook(test_hook) is False
 
     def test_unregister_after_hook(self):
         """Test that after hooks can be unregistered."""
         def test_hook(context):
             return None
 
+        def other_hook(context):
+            return None
+
         register_after_llm_call_hook(test_hook)
-        unregister_after_llm_call_hook(test_hook)
-        hooks = get_after_llm_call_hooks()
-        assert len(hooks) == 0
+        register_after_llm_call_hook(other_hook)
+
+        assert unregister_after_llm_call_hook(test_hook) is True
+        assert get_after_llm_call_hooks() == [other_hook]
+        assert unregister_after_llm_call_hook(test_hook) is False
 
     def test_clear_all_llm_call_hooks(self):
         """Test that all llm call hooks can be cleared."""
@@ -333,9 +329,10 @@ class TestLLMHooksIntegration:
 
         register_before_llm_call_hook(test_hook)
         register_after_llm_call_hook(test_hook)
-        clear_all_llm_call_hooks()
-        hooks = get_before_llm_call_hooks()
-        assert len(hooks) == 0
+
+        assert clear_all_llm_call_hooks() == (1, 1)
+        assert get_before_llm_call_hooks() == []
+        assert get_after_llm_call_hooks() == []
 
     def test_raising_before_hook_does_not_skip_later_hooks(self, mock_executor):
         """Fail-open is per-hook: a crashing hook must not disable its neighbors.

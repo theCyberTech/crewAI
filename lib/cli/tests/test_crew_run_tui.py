@@ -504,7 +504,9 @@ def test_a_project_env_cannot_say_an_evaluation_is_waiting(monkeypatch, value) -
 def test_the_token_stops_counting_when_the_command_is_done(monkeypatch) -> None:
     with crew_run_tui.evaluating_after_run():
         passed = crew_run_tui.os.environ["CREWAI_EVAL_AWAITING_RUN"]
+        in_a_child = contextvars.Context().run(crew_run_tui._an_evaluation_is_waiting)
 
+    assert in_a_child == {"execution_id": None}
     monkeypatch.setenv("CREWAI_EVAL_AWAITING_RUN", passed)
     assert crew_run_tui._an_evaluation_is_waiting() is None
 
@@ -2224,7 +2226,11 @@ def test_try_parse_structured_rejects_deeply_nested_input() -> None:
 def test_format_json_in_text_survives_deep_nesting() -> None:
     """The render path must contain the failure instead of losing the TUI update."""
     deep = "data: " + "[" * 4000 + "]" * 4000
-    assert isinstance(_format_json_in_text(deep), str)
+    rendered = _format_json_in_text(deep)
+    assert rendered.startswith("data: [\n  [\n    [\n")
+    assert rendered.endswith("\n    ]\n  ]\n]")
+    assert rendered.count("[") == 4000
+    assert rendered.count("]") == 4000
 
 
 def test_format_json_in_text_still_pretty_prints_valid_json() -> None:

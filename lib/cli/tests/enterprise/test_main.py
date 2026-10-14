@@ -87,8 +87,15 @@ class TestEnterpriseConfigureCommand(unittest.TestCase):
         )
         mock_requests_get.return_value = mock_response
 
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(SystemExit) as ctx:
             self.enterprise_command.configure("https://enterprise.example.com")
+
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertEqual(
+            str(ctx.exception.__cause__),
+            "Failed to connect to enterprise URL: 404 Not Found",
+        )
+        self.mock_settings_command.set.assert_not_called()
 
     @patch('crewai_cli.enterprise.main.httpx.get')
     @patch('crewai_cli.enterprise.main.get_crewai_version')
@@ -101,8 +108,16 @@ class TestEnterpriseConfigureCommand(unittest.TestCase):
         mock_response.json.side_effect = json.JSONDecodeError("Invalid JSON", "", 0)
         mock_requests_get.return_value = mock_response
 
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(SystemExit) as ctx:
             self.enterprise_command.configure("https://enterprise.example.com")
+
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertEqual(
+            str(ctx.exception.__cause__),
+            "Error fetching OAuth2 configuration: Invalid JSON response from "
+            "https://enterprise.example.com/auth/parameters",
+        )
+        self.mock_settings_command.set.assert_not_called()
 
     @patch('crewai_cli.enterprise.main.httpx.get')
     @patch('crewai_cli.enterprise.main.get_crewai_version')
@@ -132,14 +147,24 @@ class TestEnterpriseConfigureCommand(unittest.TestCase):
             'audience': 'test_audience',
             'domain': 'test.domain.com',
             'device_authorization_client_id': 'test_client_id',
-            'provider': 'workos'
+            'provider': 'workos',
+            'extra': {}
         }
         mock_requests_get.return_value = mock_response
 
         self.mock_settings_command.set.side_effect = Exception("Settings update failed")
 
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(SystemExit) as ctx:
             self.enterprise_command.configure("https://enterprise.example.com")
+
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertEqual(
+            str(ctx.exception.__cause__),
+            "Failed to update OAuth2 settings: Settings update failed",
+        )
+        self.mock_settings_command.set.assert_called_once_with(
+            'enterprise_base_url', 'https://enterprise.example.com'
+        )
 
     def test_url_trailing_slash_removal(self):
         with patch.object(self.enterprise_command, '_fetch_oauth_config') as mock_fetch, \
@@ -155,4 +180,12 @@ class TestEnterpriseConfigureCommand(unittest.TestCase):
             self.enterprise_command.configure("https://enterprise.example.com/")
 
             mock_fetch.assert_called_once_with("https://enterprise.example.com")
-            mock_update.assert_called_once()
+            mock_update.assert_called_once_with(
+                "https://enterprise.example.com",
+                {
+                    'audience': 'test_audience',
+                    'domain': 'test.domain.com',
+                    'device_authorization_client_id': 'test_client_id',
+                    'provider': 'workos'
+                },
+            )

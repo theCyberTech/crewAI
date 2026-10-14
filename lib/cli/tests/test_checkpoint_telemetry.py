@@ -43,10 +43,13 @@ def test_checkpoint_command_usage(args, target, action):
     )
 
 
-@pytest.mark.parametrize("args", [["--help"], ["list", "--help"], ["diff"]])
-def test_help_and_invalid_arguments_are_not_counted(args):
+@pytest.mark.parametrize(
+    ("args", "exit_code"), [(["--help"], 0), (["list", "--help"], 0), (["diff"], 2)]
+)
+def test_help_and_invalid_arguments_are_not_counted(args, exit_code):
     with patch("crewai_core.telemetry.Telemetry") as telemetry:
-        CliRunner().invoke(crewai, ["checkpoint", *args])
+        result = CliRunner().invoke(crewai, ["checkpoint", *args])
+    assert result.exit_code == exit_code, result.output
     telemetry.assert_not_called()
 
 
@@ -64,15 +67,39 @@ def test_telemetry_failure_does_not_block_command(failure):
             getattr(telemetry.return_value, failure).side_effect = RuntimeError(
                 "unavailable"
             )
-        result = CliRunner().invoke(crewai, ["checkpoint", "list"])
+        result = CliRunner().invoke(
+            crewai, ["checkpoint", "list", "/private/checkpoints"]
+        )
 
     assert result.exit_code == 0, result.output
-    operation.assert_called_once()
+    operation.assert_called_once_with("/private/checkpoints")
 
 
-@pytest.mark.parametrize(
-    "flag", ["OTEL_SDK_DISABLED", "CREWAI_DISABLE_TELEMETRY", "CREWAI_DISABLE_TRACKING"]
-)
+TELEMETRY_OPT_OUT_FLAGS = [
+    "OTEL_SDK_DISABLED",
+    "CREWAI_DISABLE_TELEMETRY",
+    "CREWAI_DISABLE_TRACKING",
+]
+
+
+def test_checkpoint_usage_is_counted_without_an_opt_out(monkeypatch):
+    for flag in TELEMETRY_OPT_OUT_FLAGS:
+        monkeypatch.delenv(flag, raising=False)
+    monkeypatch.setattr(Telemetry, "_instance", None)
+    telemetry = Telemetry()
+    telemetry.provider = MagicMock()
+    telemetry.ready = True
+
+    _record_checkpoint_usage("list")
+
+    tracer = telemetry.provider.get_tracer.return_value
+    tracer.start_span.assert_called_once_with("Feature Usage")
+    tracer.start_span.return_value.set_attribute.assert_any_call(
+        "feature", "cli_usage:checkpoint_list"
+    )
+
+
+@pytest.mark.parametrize("flag", TELEMETRY_OPT_OUT_FLAGS)
 def test_checkpoint_usage_respects_telemetry_opt_out(monkeypatch, flag):
     monkeypatch.setenv(flag, "true")
     monkeypatch.setattr(Telemetry, "_instance", None)

@@ -9,7 +9,7 @@ import zipfile
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
@@ -46,15 +46,19 @@ class TestSkillCreate:
         with in_temp_dir():
             Path("pyproject.toml").write_text("[tool.poetry]\nname = 'test'\n")
             skill_command.create("my-skill")
-            assert Path("skills/my-skill/SKILL.md").exists()
+            content = Path("skills/my-skill/SKILL.md").read_text()
+            assert content.startswith("---\nname: my-skill\n")
             assert Path("skills/my-skill/scripts").is_dir()
             assert Path("skills/my-skill/references").is_dir()
             assert Path("skills/my-skill/assets").is_dir()
+            assert not Path("my-skill").exists()
 
     def test_create_outside_project(self, skill_command, tmp_path):
         with in_temp_dir():
             skill_command.create("standalone-skill", in_project=False)
-            assert Path("standalone-skill/SKILL.md").exists()
+            content = Path("standalone-skill/SKILL.md").read_text()
+            assert content.startswith("---\nname: standalone-skill\n")
+            assert not Path("skills").exists()
 
     def test_create_adds_name_to_skill_md(self, skill_command):
         with in_temp_dir():
@@ -106,7 +110,12 @@ class TestSkillInstall:
         with in_temp_dir():
             Path("pyproject.toml").write_text("[tool]\n")
             skill_command.install("@acme/my-skill")
-            assert Path("skills/my-skill/SKILL.md").exists()
+            assert Path("skills/my-skill/SKILL.md").read_text() == (
+                "---\nname: my-skill\ndescription: Test.\n---\nInstructions."
+            )
+        skill_command.plus_api_client.get_skill.assert_called_once_with(
+            "acme", "my-skill"
+        )
 
 
 class TestSkillPublish:
@@ -201,7 +210,14 @@ class TestSkillPublish:
                 mock_settings_cls.return_value.enterprise_base_url = None
                 skill_command.publish(org="acme", force=True)
             mock_repo_cls.assert_not_called()
-            skill_command.plus_api_client.publish_skill.assert_called_once()
+            skill_command.plus_api_client.publish_skill.assert_called_once_with(
+                org="acme",
+                name="my-skill",
+                version="1.0.0",
+                is_public=False,
+                description="A test skill.",
+                encoded_file=ANY,
+            )
 
     def test_publish_blocked_when_fetch_fails(self, skill_command):
         """A failing remote fetch must fail closed, not silently skip syncing."""
@@ -253,19 +269,37 @@ class TestSkillPublish:
                 mock_settings_cls.return_value.org_name = "acme"
                 mock_settings_cls.return_value.enterprise_base_url = None
                 skill_command.publish(org="acme")
-            skill_command.plus_api_client.publish_skill.assert_called_once()
+            skill_command.plus_api_client.publish_skill.assert_called_once_with(
+                org="acme",
+                name="my-skill",
+                version="1.0.0",
+                is_public=False,
+                description="A test skill.",
+                encoded_file=ANY,
+            )
 
 
 class TestSkillListCached:
-    def test_list_cached_empty(self, skill_command, capsys):
-        with in_temp_dir():
+    def test_list_cached_empty(self, skill_command, capsys, monkeypatch):
+        with in_temp_dir() as td:
+            monkeypatch.setenv("HOME", td)
             skill_command.list_cached()
+        out = capsys.readouterr().out
+        assert "Installed Skills" in out
+        assert "project" not in out
+        assert "cache" not in out
 
-    def test_list_cached_shows_project_skills(self, skill_command, capsys):
-        with in_temp_dir():
+    def test_list_cached_shows_project_skills(self, skill_command, capsys, monkeypatch):
+        with in_temp_dir() as td:
+            monkeypatch.setenv("HOME", td)
             skill_dir = Path("skills/my-skill")
             skill_dir.mkdir(parents=True)
             (skill_dir / "SKILL.md").write_text(
-                "---\nname: my-skill\nversion: 0.5.0\ndescription: A skill.\n---\nBody."
+                "---\nname: my-skill\nmetadata:\n  version: 0.5.0\ndescription: A skill.\n---\nBody."
             )
             skill_command.list_cached()
+        out = capsys.readouterr().out
+        row = next(line for line in out.splitlines() if "project" in line)
+        assert "my-skill" in row
+        assert "0.5.0" in row
+        assert "skills/my-skill" in row

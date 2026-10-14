@@ -45,8 +45,12 @@ class TestTriggersCommand(unittest.TestCase):
 
         self.triggers_command.list_triggers()
 
-        self.mock_client.get_triggers.assert_called_once()
+        self.mock_client.get_triggers.assert_called_once_with()
         mock_console_print.assert_any_call("[bold blue]Fetching available triggers...[/bold blue]")
+        mock_console_print.assert_any_call(
+            "\n[bold cyan]Test App[/bold cyan] (test-app) - [green]✓ Connected[/green]"
+        )
+        mock_console_print.assert_any_call("[dim]A test application[/dim]")
 
     @patch("crewai_cli.triggers.main.console.print")
     def test_list_triggers_no_apps(self, mock_console_print):
@@ -140,8 +144,16 @@ class TestTriggersCommand(unittest.TestCase):
         payload = {"key": "value"}
         mock_subprocess.side_effect = subprocess.CalledProcessError(1, "uv")
 
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(SystemExit) as exc_info:
             self.triggers_command._run_crew_with_payload(payload)
+
+        self.assertEqual(exc_info.exception.code, 1)
+        mock_subprocess.assert_called_once_with(
+            ["uv", "run", "run_with_trigger", '{"key": "value"}'],
+            capture_output=False,
+            text=True,
+            check=True
+        )
 
     @patch("subprocess.run")
     def test_run_crew_with_payload_empty_payload(self, mock_subprocess):

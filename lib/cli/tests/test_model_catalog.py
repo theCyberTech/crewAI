@@ -557,7 +557,7 @@ def test_ollama_never_written_to_catalog_cache(monkeypatch):
     monkeypatch.setattr(
         mc, "_http_get_json", lambda *a, **k: {"models": [{"model": "llama3.3"}]}
     )
-    mc.get_provider_models("ollama", [])
+    assert mc.get_provider_models("ollama", []) == [("llama3.3", "Llama3.3")]
     assert not mc._catalog_cache_file().exists()
 
 
@@ -604,3 +604,18 @@ def test_dynamic_cache_expires_after_catalog_ttl(monkeypatch):
     )
 
     assert mc._read_catalog_cache("anthropic") is None
+
+    mc._catalog_cache_file().write_text(
+        json.dumps(
+            {
+                entry_key: {
+                    "ts": time.time() - (mc._CATALOG_TTL - 60),
+                    "source": "dynamic",
+                    "models": [["fresh-model", "Fresh"]],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert mc._read_catalog_cache("anthropic") == [("fresh-model", "Fresh")]

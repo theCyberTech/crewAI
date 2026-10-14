@@ -774,6 +774,20 @@ def test_a_request_without_the_login_names_no_organization(project, monkeypatch,
     assert "X-Crewai-Organization-Id" not in client.headers
 
 
+def test_a_request_with_the_login_names_its_organization(project, monkeypatch):
+    monkeypatch.setenv("CREWAI_PLUS_URL", "https://app.crewai.com")
+    monkeypatch.setattr(eval_module, "saved_login", lambda: "tok")
+    monkeypatch.setattr(
+        "crewai_core.plus_api.Settings",
+        lambda: SimpleNamespace(org_uuid="org-42", enterprise_base_url=None),
+    )
+
+    client = eval_module._amp_client({"https://app.crewai.com"}, note=lambda _t: None)
+
+    assert client.api_key == "tok"
+    assert client.headers["X-Crewai-Organization-Id"] == "org-42"
+
+
 def test_telemetry_never_breaks_the_command(project, monkeypatch):
     directory, _ = project
     record_last_run(directory, "counted-run")
@@ -810,6 +824,7 @@ def test_a_project_with_nothing_to_say_sends_nothing(project, monkeypatch):
 
     eval_module.eval_crew()
 
+    assert amp.calls[0] == ("create", EXECUTION_ID)
     assert amp.sent_config is None
 
 
@@ -889,7 +904,7 @@ def test_the_app_it_opens_is_told_an_evaluation_is_waiting(project, monkeypatch)
     def fake_run_crew() -> None:
         from crewai_cli.crew_run_tui import _AUTO_EVAL
 
-        assert _AUTO_EVAL.get() is not None, "the app must be told in this process"
+        assert _AUTO_EVAL.get() == {"execution_id": None}, "the app must be told in this process"
         # and in a child process, where a ContextVar cannot reach: a token, and
         # the file of that name that makes it count
         from crewai_cli.crew_run_tui import _awaiting_dir

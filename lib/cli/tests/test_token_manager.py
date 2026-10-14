@@ -284,8 +284,12 @@ class TestAtomicFileOperations(unittest.TestCase):
         """Test deleting non-existent file doesn't raise."""
         mock_get_key.return_value = Fernet.generate_key()
         tm = TokenManager()
+        other_path = Path(self.temp_dir) / "other.txt"
+        other_path.write_bytes(b"content")
 
         tm._delete_secure_file("nonexistent.txt")
+
+        self.assertEqual(list(Path(self.temp_dir).iterdir()), [other_path])
 
 
 class TestSecureStoragePathPermissions(unittest.TestCase):

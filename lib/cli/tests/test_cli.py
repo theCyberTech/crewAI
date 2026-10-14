@@ -354,7 +354,7 @@ def test_login(command, runner):
     result = runner.invoke(login)
 
     assert result.exit_code == 0
-    mock_auth.login.assert_called_once()
+    mock_auth.login.assert_called_once_with()
 
 
 @mock.patch("crewai_cli.cli.DeployCommand")
@@ -363,7 +363,7 @@ def test_deploy_create(command, runner):
     result = runner.invoke(deploy_create)
 
     assert result.exit_code == 0
-    mock_deploy.create_crew.assert_called_once()
+    mock_deploy.create_crew.assert_called_once_with(False, skip_validate=False)
 
 
 @mock.patch("crewai_cli.cli.DeployCommand")
@@ -372,7 +372,7 @@ def test_deploy_list(command, runner):
     result = runner.invoke(deploy_list)
 
     assert result.exit_code == 0
-    mock_deploy.list_crews.assert_called_once()
+    mock_deploy.list_crews.assert_called_once_with()
 
 
 @mock.patch("crewai_cli.cli.DeployCommand")

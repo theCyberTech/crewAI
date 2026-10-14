@@ -37,8 +37,10 @@ def test_org_list_command(mock_org_command_class, runner):
     result = runner.invoke(org_list)
 
     assert result.exit_code == 0
-    mock_org_command_class.assert_called_once()
-    mock_org_instance.list.assert_called_once()
+    mock_org_command_class.assert_called_once_with()
+    mock_org_instance.list.assert_called_once_with()
+    mock_org_instance.switch.assert_not_called()
+    mock_org_instance.current.assert_not_called()
 
 
 @patch("crewai_cli.cli.OrganizationCommand")
@@ -61,8 +63,10 @@ def test_org_current_command(mock_org_command_class, runner):
     result = runner.invoke(current)
 
     assert result.exit_code == 0
-    mock_org_command_class.assert_called_once()
-    mock_org_instance.current.assert_called_once()
+    mock_org_command_class.assert_called_once_with()
+    mock_org_instance.current.assert_called_once_with()
+    mock_org_instance.list.assert_not_called()
+    mock_org_instance.switch.assert_not_called()
 
 
 class TestOrganizationCommand(unittest.TestCase):

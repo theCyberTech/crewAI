@@ -1,11 +1,14 @@
 """Test for version management."""
 
+from collections.abc import Iterator
+import importlib.metadata
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from crewai_cli.version import get_crewai_version as _get_ver
+import pytest
+
 from crewai_cli.version import (
     get_crewai_dependency_range,
     get_crewai_tools_dependency,
@@ -22,17 +25,6 @@ from crewai_core.version import (
 )
 
 
-def test_dynamic_versioning_consistency() -> None:
-    """Test that dynamic versioning provides consistent version across all access methods."""
-    cli_version = get_crewai_version()
-    package_version = _get_ver()
-
-    assert cli_version == package_version
-
-    assert package_version is not None
-    assert len(package_version.strip()) > 0
-
-
 def test_generated_project_dependency_uses_next_major_upper_bound() -> None:
     assert get_crewai_dependency_range("1.15.0") == ">=1.15.0,<2.0.0"
     assert get_crewai_tools_dependency("1.15.0") == "crewai[tools]>=1.15.0,<2.0.0"
@@ -41,11 +33,30 @@ def test_generated_project_dependency_uses_next_major_upper_bound() -> None:
 class TestVersionChecking:
     """Test version checking utilities."""
 
-    def test_get_crewai_version(self) -> None:
+    @pytest.fixture
+    def clear_version_cache(self) -> Iterator[None]:
+        get_crewai_version.cache_clear()
+        yield
+        get_crewai_version.cache_clear()
+
+    @pytest.mark.usefixtures("clear_version_cache")
+    @patch("crewai_core.version.importlib.metadata.version")
+    def test_get_crewai_version(self, mock_version: MagicMock) -> None:
         """Test getting current crewai version."""
-        version = get_crewai_version()
-        assert isinstance(version, str)
-        assert len(version) > 0
+        mock_version.return_value = "1.2.3"
+
+        assert get_crewai_version() == "1.2.3"
+        mock_version.assert_called_once_with("crewai")
+
+    @pytest.mark.usefixtures("clear_version_cache")
+    @patch("crewai_core.version.importlib.metadata.version")
+    def test_get_crewai_version_falls_back_to_unknown(
+        self, mock_version: MagicMock
+    ) -> None:
+        """Test version falls back to "unknown" when no package is installed."""
+        mock_version.side_effect = importlib.metadata.PackageNotFoundError
+
+        assert get_crewai_version() == "unknown"
 
     def test_get_cache_file(self) -> None:
         """Test cache file path generation."""

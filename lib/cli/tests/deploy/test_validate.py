@@ -171,14 +171,15 @@ def test_normalize_package_name(project_name: str, expected: str) -> None:
 def test_valid_standard_crew_project_passes(tmp_path: Path) -> None:
     _scaffold_standard_crew(tmp_path)
     v = _run_without_import_check(tmp_path)
-    assert v.ok, f"expected clean run, got {v.results}"
+    assert v.results == []
+    assert v.ok is True
 
 
 def test_valid_json_crew_project_passes(tmp_path: Path) -> None:
     _scaffold_json_crew(tmp_path)
     v = DeployValidator(project_root=tmp_path)
     v.run()
-    assert "invalid_crew_json" not in _codes(v)
+    assert v.results == []
 
 
 def test_json_task_agent_mismatch_is_error(tmp_path: Path) -> None:
@@ -393,6 +394,20 @@ def test_hatchling_without_wheel_config_passes_when_pkg_dir_matches(
     assert "hatch_wheel_target_missing" not in _codes(v)
 
 
+def test_hatchling_without_wheel_config_errors_when_pkg_dir_missing(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        _make_pyproject(name="my_crew", hatchling=True)
+    )
+    (tmp_path / "uv.lock").write_text("")
+    v = _run_without_import_check(tmp_path)
+    assert _codes(v) == {"missing_src_dir", "hatch_wheel_target_missing"}
+    finding = next(r for r in v.results if r.code == "hatch_wheel_target_missing")
+    assert finding.severity is Severity.ERROR
+    assert 'packages = ["src/my_crew"]' in finding.hint
+
+
 def test_hatchling_with_explicit_wheel_config_passes(tmp_path: Path) -> None:
     extra = (
         "[tool.hatch.build.targets.wheel]\n"
@@ -558,12 +573,12 @@ def test_create_crew_aborts_on_validation_error(tmp_path: Path) -> None:
         mock_patch(
             "crewai_cli.deploy.main._prepare_project_for_deploy",
             return_value=False,
-        ),
+        ) as mock_prepare,
     ):
         cmd = DeployCommand()
         cmd.create_crew()
-        assert not cmd.plus_api_client.create_crew.called
-        del mock_api  # silence unused-var lint
+        mock_prepare.assert_called_once_with(False)
+        mock_api.return_value.create_crew.assert_not_called()
 
 
 def test_is_json_crew_defers_to_declared_flow_type(tmp_path):

@@ -96,8 +96,17 @@ def test_tree_copy_to_existing_directory(temp_tree):
     try:
         create_file(os.path.join(dest_dir, "existing_file.txt"), "I was here first")
         utils.tree_copy(temp_tree, dest_dir)
-        assert os.path.isfile(os.path.join(dest_dir, "existing_file.txt"))
-        assert os.path.isfile(os.path.join(dest_dir, "file1.txt"))
+        assert set(os.listdir(dest_dir)) == {
+            "existing_file.txt",
+            "file1.txt",
+            "file2.txt",
+            "empty_dir",
+            "nested_dir",
+        }
+        with open(os.path.join(dest_dir, "existing_file.txt"), "r") as f:
+            assert f.read() == "I was here first"
+        with open(os.path.join(dest_dir, "file1.txt"), "r") as f:
+            assert f.read() == "Hello, world!"
     finally:
         shutil.rmtree(dest_dir)
 

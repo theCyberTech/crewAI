@@ -34,6 +34,8 @@ definition = "crew.jsonc"
 
     install_crew_module.install_crew([])
 
+    assert list(fp.calls) == [["uv", "sync", "--no-install-project"]]
+
 
 def test_install_crew_json_project_with_python_package_installs_project(
     fp, monkeypatch, tmp_path: Path
@@ -57,6 +59,8 @@ definition = "crew.jsonc"
 
     install_crew_module.install_crew([])
 
+    assert list(fp.calls) == [["uv", "sync"]]
+
 
 def test_install_crew_flow_project_installs_project(fp, monkeypatch, tmp_path: Path):
     monkeypatch.chdir(tmp_path)
@@ -74,6 +78,8 @@ type = "flow"
 
     install_crew_module.install_crew([])
 
+    assert list(fp.calls) == [["uv", "sync"]]
+
 
 def test_install_crew_classic_project_installs_project(
     fp, monkeypatch, tmp_path: Path
@@ -84,11 +90,15 @@ def test_install_crew_classic_project_installs_project(
 
     install_crew_module.install_crew([])
 
+    assert list(fp.calls) == [["uv", "sync"]]
+
 
 def test_install_crew_install_project_false_adds_no_install_project(fp):
     fp.register(["uv", "sync", "--no-install-project", "--frozen"], stdout="")
 
     install_crew_module.install_crew(["--frozen"], install_project=False)
+
+    assert list(fp.calls) == [["uv", "sync", "--no-install-project", "--frozen"]]
 
 
 def test_install_crew_reraises_sync_failure_when_requested(fp):
@@ -98,7 +108,13 @@ def test_install_crew_reraises_sync_failure_when_requested(fp):
         install_crew_module.install_crew([], raise_on_error=True)
 
 
-def test_install_crew_swallows_sync_failure_by_default(fp):
+def test_install_crew_swallows_sync_failure_by_default(fp, capsys):
     fp.register(["uv", "sync"], returncode=1, stderr="sync failed\n")
 
     install_crew_module.install_crew([])
+
+    assert list(fp.calls) == [["uv", "sync"]]
+    assert (
+        "An error occurred while running the crew: "
+        "Command '['uv', 'sync']' returned non-zero exit status 1."
+    ) in capsys.readouterr().err

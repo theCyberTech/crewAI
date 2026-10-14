@@ -253,8 +253,14 @@ class TestDeployCommand(unittest.TestCase):
     def test_init_failure(self, mock_get_auth_token):
         mock_get_auth_token.side_effect = Exception("Auth failed")
 
-        with self.assertRaises(SystemExit):
-            deploy_main.DeployCommand()
+        with patch("sys.stdout", new=StringIO()) as fake_out:
+            with self.assertRaises(SystemExit):
+                deploy_main.DeployCommand()
+        self.assertIn(
+            "Please sign up/login to CrewAI+ before using the CLI.",
+            fake_out.getvalue(),
+        )
+        self.assertIn("Run 'crewai login' to sign up/login.", fake_out.getvalue())
 
     def test_validate_response_successful_response(self):
         mock_response = Mock(spec=httpx.Response)
@@ -1311,8 +1317,3 @@ class TestDeployCommand(unittest.TestCase):
 
         project_name = get_project_name()
         self.assertEqual(project_name, "test_project")
-
-    def test_get_crewai_version(self):
-        from crewai_cli.version import get_crewai_version
-
-        assert isinstance(get_crewai_version(), str)

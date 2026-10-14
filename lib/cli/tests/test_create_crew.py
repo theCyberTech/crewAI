@@ -2,6 +2,7 @@ import asyncio
 import builtins
 import keyword
 import shutil
+import subprocess
 import tempfile
 import threading
 import warnings
@@ -204,7 +205,14 @@ def test_create_initializes_git_repo_when_git_is_available(
     result = runner.invoke(crewai, args)
 
     assert result.exit_code == 0, result.output
-    assert (tmp_path / project_root / ".git").is_dir()
+    toplevel = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],  # noqa: S607
+        cwd=tmp_path / project_root,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert Path(toplevel.stdout.strip()) == (tmp_path / project_root).resolve()
 
 
 def test_create_folder_structure_handles_spaces_and_dashes_with_slash():
@@ -296,6 +304,11 @@ def test_create_crew_with_parent_folder_and_trailing_slash(
         crew_path = parent_path / "child_crew"
         assert crew_path.exists()
         assert not (crew_path / "src").exists()
+        mock_copy_template.assert_called_once()
+        src_file, dst_file, *names = mock_copy_template.call_args.args
+        assert src_file.name == "crew.py"
+        assert dst_file == crew_path / "crew.py"
+        assert names == ["child-crew/", "ChildCrew", "child_crew"]
 
 
 def test_create_folder_structure_folder_name_validation():
@@ -830,9 +843,9 @@ def test_platform_validation_checks_apps_concurrently():
     barrier = threading.Barrier(2)
 
     class FakeClient:
-        def get_actions(self, _selectors):
+        def get_actions(self, selectors):
             barrier.wait(timeout=1)
-            return [object()]
+            return [f"{selectors[0]}-action"]
 
     results = asyncio.run(
         json_crew._check_platform_apps_concurrently(
@@ -842,7 +855,7 @@ def test_platform_validation_checks_apps_concurrently():
         )
     )
 
-    assert all(actions and error is None for actions, error in results)
+    assert results == [(["github-action"], None), (["gmail-action"], None)]
 
 
 def test_platform_validation_announces_concurrent_apps_together(capsys):
@@ -1159,19 +1172,14 @@ def test_json_create_saves_platform_token_to_env_file(tmp_path, monkeypatch):
 
 
 def test_json_crew_uses_template_files():
-    template_names = {
-        "pyproject.toml",
-        "README.md",
-        ".gitignore",
-        "agent.jsonc",
-        "agent_settings.jsonc",
-        "task.jsonc",
-        "crew.jsonc",
-        "knowledge/user_preference.txt",
-    }
+    readme = json_crew._render_json_crew_template("README.md", {"name": "JSON Crew"})
 
-    for template_name in template_names:
-        assert (json_crew._TEMPLATES_DIR / template_name).is_file()
+    assert readme.splitlines()[:3] == [
+        "# JSON Crew",
+        "",
+        "A crewAI project using JSON-first configuration.",
+    ]
+    assert ".env" in json_crew._render_json_crew_template(".gitignore").splitlines()
 
 
 def test_render_template_does_not_replace_tokens_inside_replacement_values(tmp_path):

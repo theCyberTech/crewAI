@@ -683,9 +683,10 @@ def test_conversational_flow_does_not_take_the_steps_tui(
     definition_path = tmp_path / "flow.yaml"
     definition_path.write_text(CONVERSATIONAL_FLOW_YAML, encoding="utf-8")
 
+    launched: list[Any] = []
     monkeypatch.setattr(run_declarative_flow_module, "is_interactive", lambda: True)
     monkeypatch.setattr(
-        "crewai_cli.kickoff_flow._run_conversational_flow_tui", lambda flow: None
+        "crewai_cli.kickoff_flow._run_conversational_flow_tui", launched.append
     )
     monkeypatch.setattr(
         run_declarative_flow_module,
@@ -694,6 +695,8 @@ def test_conversational_flow_does_not_take_the_steps_tui(
     )
 
     run_declarative_flow_module.run_declarative_flow(str(definition_path))
+
+    assert len(launched) == 1
 
 
 def test_conversational_flow_rejects_inputs(

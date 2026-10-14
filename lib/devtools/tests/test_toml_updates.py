@@ -1,6 +1,7 @@
 """Tests for TOML-based version and dependency update functions."""
 
 from pathlib import Path
+import re
 from textwrap import dedent
 
 from crewai_devtools import cli as devtools_cli
@@ -14,6 +15,14 @@ from crewai_devtools.cli import (
     update_template_dependencies,
 )
 import pytest
+
+
+def _assert_effective_pin(repo_dir: Path, pyproject_content: str, found: str) -> None:
+    _validate_deployment_repo_crewai_pin(repo_dir, pyproject_content, "2.0.0")
+    with pytest.raises(
+        RuntimeError, match=re.escape(f"must all pin 2.0.1; found {found}") + "$"
+    ):
+        _validate_deployment_repo_crewai_pin(repo_dir, pyproject_content, "2.0.1")
 
 
 def test_release_updates_crew_and_flow_canary_repositories(monkeypatch) -> None:
@@ -48,10 +57,10 @@ def test_deployment_repo_validation_accepts_workflow_pin(tmp_path: Path) -> None
     workflows.mkdir(parents=True)
     (workflows / "test.yml").write_text('run: uv pip install "crewai[a2a]==2.0.0"\n')
 
-    _validate_deployment_repo_crewai_pin(
+    _assert_effective_pin(
         tmp_path,
         '[project]\ndependencies = ["requests>=2"]\n',
-        "2.0.0",
+        "'crewai[a2a]==2.0.0'",
     )
 
 
@@ -73,10 +82,10 @@ def test_deployment_repo_validation_accepts_quoted_workflow_pin(
         encoding="utf-8",
     )
 
-    _validate_deployment_repo_crewai_pin(
+    _assert_effective_pin(
         tmp_path,
         '[project]\ndependencies = ["requests>=2"]\n',
-        "2.0.0",
+        "'crewai==2.0.0'",
     )
 
 
@@ -125,14 +134,14 @@ def test_deployment_repo_validation_ignores_pyproject_comment_pin(
 def test_deployment_repo_validation_accepts_spaced_extras_and_marker(
     tmp_path: Path,
 ) -> None:
-    _validate_deployment_repo_crewai_pin(
+    _assert_effective_pin(
         tmp_path,
         (
             "[project]\ndependencies = [\n"
             "  \"crewai[tools, embeddings]==2.0.0; python_version >= '3.10'\",\n"
             "]\n"
         ),
-        "2.0.0",
+        "\"crewai[tools, embeddings]==2.0.0; python_version >= '3.10'\"",
     )
 
 
@@ -149,10 +158,10 @@ def test_deployment_repo_validation_reads_multiline_workflow_install(
         "        \"crewai[tools, embeddings]==2.0.0; python_version >= '3.10'\"\n"
     )
 
-    _validate_deployment_repo_crewai_pin(
+    _assert_effective_pin(
         tmp_path,
         '[project]\ndependencies = ["requests>=2"]\n',
-        "2.0.0",
+        "\"crewai[tools, embeddings]==2.0.0; python_version >= '3.10'\"",
     )
 
 
@@ -170,10 +179,10 @@ def test_deployment_repo_validation_reads_install_after_comment(
         encoding="utf-8",
     )
 
-    _validate_deployment_repo_crewai_pin(
+    _assert_effective_pin(
         tmp_path,
         '[project]\ndependencies = ["requests>=2"]\n',
-        "2.0.0",
+        "'crewai==2.0.0'",
     )
 
 
@@ -191,10 +200,10 @@ def test_deployment_repo_validation_reads_folded_workflow_install(
         encoding="utf-8",
     )
 
-    _validate_deployment_repo_crewai_pin(
+    _assert_effective_pin(
         tmp_path,
         '[project]\ndependencies = ["requests>=2"]\n',
-        "2.0.0",
+        "'crewai==2.0.0'",
     )
 
 
@@ -209,10 +218,10 @@ def test_deployment_repo_validation_skips_non_file_workflow_entries(
         encoding="utf-8",
     )
 
-    _validate_deployment_repo_crewai_pin(
+    _assert_effective_pin(
         tmp_path,
         '[project]\ndependencies = ["requests>=2"]\n',
-        "2.0.0",
+        "'crewai==2.0.0'",
     )
 
 
@@ -278,8 +287,7 @@ class TestUpdatePyprojectVersion:
         update_pyproject_version(pyproject, "2.0.0")
         result = pyproject.read_text()
 
-        assert "# This is important" in result
-        assert 'description = "A package"' in result
+        assert result == content.replace('version = "1.0.0"', 'version = "2.0.0"')
 
 
 class TestPinCrewaiDeps:
@@ -368,7 +376,7 @@ class TestPinCrewaiDeps:
             name = "empty"
         """)
         result = _pin_crewai_deps(content, "2.0.0")
-        assert "empty" in result
+        assert result == content
 
     def test_skips_crewai_without_version_specifier(self) -> None:
         content = dedent("""\
@@ -532,7 +540,7 @@ class TestUpdateTemplateDependencies:
 
         updated = update_template_dependencies(tmp_path, "2.0.0")
 
-        assert len(updated) == 1
+        assert updated == [tpl]
         content = tpl.read_text()
         assert '"crewai[tools]==2.0.0"' in content
         assert "{{folder_name}}" in content
@@ -543,8 +551,8 @@ class TestUpdateTemplateDependencies:
 
         updated = update_template_dependencies(tmp_path, "3.0.0")
 
-        assert len(updated) == 1
-        assert '"crewai==3.0.0"' in tpl.read_text()
+        assert updated == [tpl]
+        assert tpl.read_text() == 'dependencies = [\n    "crewai==3.0.0"\n]\n'
 
     def test_skips_unrelated_deps(self, tmp_path: Path) -> None:
         tpl = tmp_path / "pyproject.toml"
@@ -552,5 +560,5 @@ class TestUpdateTemplateDependencies:
 
         updated = update_template_dependencies(tmp_path, "2.0.0")
 
-        assert len(updated) == 0
-        assert '"requests>=2.0"' in tpl.read_text()
+        assert updated == []
+        assert tpl.read_text() == 'dependencies = [\n    "requests>=2.0"\n]\n'

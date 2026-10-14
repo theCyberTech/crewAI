@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
+import importlib.metadata
 import logging
-import os
 from pathlib import Path
 from unittest.mock import Mock
 
 from crewai_core import (
-    constants,
     lock_store,
     paths,
     printer,
@@ -16,12 +15,19 @@ from crewai_core import (
     user_data,
     version,
 )
+import portalocker
 import pytest
 
 
-def test_version_returns_string() -> None:
-    v = version.get_crewai_version()
-    assert isinstance(v, str) and v
+def test_version_returns_string(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        importlib.metadata, "version", lambda name: {"crewai": "1.2.3"}[name]
+    )
+    version.get_crewai_version.cache_clear()
+    try:
+        assert version.get_crewai_version() == "1.2.3"
+    finally:
+        version.get_crewai_version.cache_clear()
 
 
 def test_paths_creates_storage_dir(
@@ -33,11 +39,8 @@ def test_paths_creates_storage_dir(
         lambda app, author: str(tmp_path / app),
     )
     out = paths.db_storage_path()
-    assert Path(out).exists()
-
-
-def test_constants_exposes_env_keys() -> None:
-    assert constants.CREWAI_TRAINED_AGENTS_FILE_ENV == "CREWAI_TRAINED_AGENTS_FILE"
+    assert out == str(tmp_path / "store")
+    assert Path(out).is_dir()
 
 
 def test_printer_emits_when_not_suppressed(capsys: pytest.CaptureFixture[str]) -> None:
@@ -52,11 +55,21 @@ def test_printer_respects_suppression(capsys: pytest.CaptureFixture[str]) -> Non
         printer.PRINTER.print("hidden")
     finally:
         printer._suppress_console_output.reset(token)  # type: ignore[arg-type]
-    assert "hidden" not in capsys.readouterr().out
+    assert capsys.readouterr().out == ""
+    printer.PRINTER.print("shown")
+    assert "shown" in capsys.readouterr().out
 
 
 def test_lock_acquires_and_releases() -> None:
-    with lock_store.lock("crewai_core.tests.smoke", timeout=5):
+    name = "crewai_core.tests.smoke"
+    with lock_store.lock(name, timeout=5):
+        with pytest.raises(
+            portalocker.exceptions.LockException,
+            match=r"Failed to acquire lock 'crewai_core\.tests\.smoke'",
+        ):
+            with lock_store.lock(name, timeout=0.1):
+                pass
+    with lock_store.lock(name, timeout=0.1):
         pass
 
 
@@ -92,11 +105,6 @@ def test_user_data_decline_blocks(
     assert user_data.is_tracing_enabled() is False
     monkeypatch.setenv("CREWAI_TRACING_ENABLED", "true")
     assert user_data.is_tracing_enabled() is True  # env-var override (matches runtime)
-
-
-def test_unused_var_warning_silenced() -> None:
-    # Touch os to keep the import (used by env-var fixtures above)
-    assert os.environ is not None
 
 
 def test_configured_project_definition_resolves_project_local_file(

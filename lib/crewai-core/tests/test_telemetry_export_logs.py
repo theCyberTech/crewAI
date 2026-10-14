@@ -137,10 +137,11 @@ def test_telemetry_pipeline_is_silent_when_collector_rejects(
         patch(
             "requests.Session.post",
             side_effect=requests.exceptions.HTTPError("400 Client Error"),
-        ),
+        ) as post,
         caplog.at_level(logging.DEBUG),
     ):
         live_telemetry.provider.get_tracer("test").start_span("probe").end()
         assert live_telemetry.provider.force_flush(timeout_millis=10_000)
 
+    assert post.call_args.kwargs["url"] == "https://telemetry.crewai.com:4319/v1/traces"
     assert _otlp_messages(caplog) == []

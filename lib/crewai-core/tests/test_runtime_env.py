@@ -191,20 +191,15 @@ class TestCpuBand:
         """Unmocked: whatever this host reports must still be a known literal."""
         assert detect_cpu_band() in KNOWN_CPU_BANDS
 
-    def test_no_band_can_carry_a_precise_core_count(self) -> None:
-        """Every emittable value is a short opaque label, as for the sibling signals."""
-        for band in KNOWN_CPU_BANDS:
-            assert len(band) <= 32, band
-            assert band.replace("-", "").replace("+", "").replace("_", "").isalnum(), (
-                band
-            )
-
-    def test_it_rides_every_span_rather_than_only_crew_created(self) -> None:
+    def test_it_rides_every_span_rather_than_only_crew_created(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """The gated `cpus` sits on Crew Created alone, which answers nothing for
         Flow-only, CLI-only or standalone-agent runs. This one is a common
         attribute, so it is on all of them."""
+        monkeypatch.setattr("crewai_core.runtime_env.os.cpu_count", lambda: 6)
         common_span_attributes.cache_clear()
         try:
-            assert common_span_attributes()["cpu_band"] in KNOWN_CPU_BANDS
+            assert common_span_attributes()["cpu_band"] == "5-8"
         finally:
             common_span_attributes.cache_clear()

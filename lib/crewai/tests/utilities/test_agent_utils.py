@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from typing import Any, Literal, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -439,7 +440,16 @@ class TestSummarizeMessages:
         )
 
         assert id(messages) == original_list_id
-        assert len(messages) == 1
+        assert messages == [
+            {
+                "role": "user",
+                "content": (
+                    "<summary>\nSummary\n</summary>\n\n"
+                    "Continue the task from where the conversation left off. "
+                    "The above is a structured summary of prior context."
+                ),
+            }
+        ]
 
     def test_preserves_system_messages(self) -> None:
         """Test that system messages are preserved and not summarized."""
@@ -623,39 +633,44 @@ class TestFormatMessagesForSummary:
 
 
 class TestExtractSummaryTags:
-    """Summary tags are pulled out inside _summarize_all."""
+    """The model's reply is reduced to the text inside its <summary> tags."""
 
-    def _from_reply(self, reply: str) -> str:
-        summarizer = SummarizeMessages()
-        summarizer.llm = MagicMock()
-        summarizer.callbacks = []
-        summarizer.llm.acall = AsyncMock(return_value=reply)
-        results = summarizer._summarize_all(
-            chunks=[[{"role": "user", "content": "x"}]], char_level_index=0
-        )
-        return results[0]
+    def _summary_message_for_reply(self, reply: str) -> str:
+        messages: list[dict[str, Any]] = [{"role": "user", "content": "x"}]
+        mock_llm = MagicMock()
+        mock_llm.get_context_window_size.return_value = 1000
+        mock_llm.acall = AsyncMock(return_value=reply)
+        summarize_messages(messages=messages, llm=mock_llm, callbacks=[])
+        return messages[0]["content"]
 
     def test_extracts_content_from_tags(self) -> None:
         text = "Preamble\n<summary>The actual summary.</summary>\nPostamble"
-        assert self._from_reply(text) == "The actual summary."
+        assert self._summary_message_for_reply(text).startswith(
+            "<summary>\nThe actual summary.\n</summary>\n\n"
+        )
 
     def test_handles_multiline_content(self) -> None:
         text = "<summary>\nLine 1\nLine 2\nLine 3\n</summary>"
-        result = self._from_reply(text)
-        assert "Line 1" in result
-        assert "Line 2" in result
-        assert "Line 3" in result
+        assert self._summary_message_for_reply(text).startswith(
+            "<summary>\nLine 1\nLine 2\nLine 3\n</summary>\n\n"
+        )
 
     def test_falls_back_when_no_tags(self) -> None:
         text = "Just a plain summary without tags."
-        assert self._from_reply(text) == text
+        assert self._summary_message_for_reply(text).startswith(
+            "<summary>\nJust a plain summary without tags.\n</summary>\n\n"
+        )
 
     def test_handles_empty_string(self) -> None:
-        assert self._from_reply("") == ""
+        assert self._summary_message_for_reply("").startswith(
+            "<summary>\n\n</summary>\n\n"
+        )
 
     def test_extracts_first_match(self) -> None:
         text = "<summary>First</summary> text <summary>Second</summary>"
-        assert self._from_reply(text) == "First"
+        content = self._summary_message_for_reply(text)
+        assert content.startswith("<summary>\nFirst\n</summary>\n\n")
+        assert "Second" not in content
 
 
 class TestSplitMessagesIntoChunks:
@@ -667,8 +682,7 @@ class TestSplitMessagesIntoChunks:
             {"role": "assistant", "content": "Hi"},
         ]
         chunks = _chunk_messages(messages, max_tokens=1000)
-        assert len(chunks) == 1
-        assert len(chunks[0]) == 2
+        assert chunks == [messages]
 
     def test_splits_at_message_boundaries(self) -> None:
         messages: list[dict[str, Any]] = [
@@ -678,7 +692,7 @@ class TestSplitMessagesIntoChunks:
         ]
         # max_tokens=30 should cause splits
         chunks = _chunk_messages(messages, max_tokens=30)
-        assert len(chunks) == 3
+        assert chunks == [[messages[0]], [messages[1]], [messages[2]]]
 
     def test_excludes_system_messages(self) -> None:
         messages: list[dict[str, Any]] = [
@@ -686,10 +700,7 @@ class TestSplitMessagesIntoChunks:
             {"role": "user", "content": "Hello"},
         ]
         chunks = _chunk_messages(messages, max_tokens=1000)
-        assert len(chunks) == 1
-        for chunk in chunks:
-            for msg in chunk:
-                assert msg.get("role") != "system"
+        assert chunks == [[{"role": "user", "content": "Hello"}]]
 
     def test_empty_messages(self) -> None:
         chunks = _chunk_messages([], max_tokens=1000)
@@ -708,8 +719,7 @@ class TestSplitMessagesIntoChunks:
             {"role": "user", "content": "Follow up"},
         ]
         chunks = _chunk_messages(messages, max_tokens=1000)
-        assert len(chunks) == 1
-        assert len(chunks[0]) == 2
+        assert chunks == [messages]
 
     def test_splits_oversized_single_message(self) -> None:
         messages: list[dict[str, Any]] = [
@@ -896,13 +906,6 @@ class TestEstimateTokenCount:
     def test_longer_string(self) -> None:
         assert _approx_tokens("a" * 100) == 25  # 100 // 4 = 25
 
-    def test_approximation_is_conservative(self) -> None:
-        # For English text, actual token count is typically lower than char/4
-        text = "The quick brown fox jumps over the lazy dog."
-        estimated = _approx_tokens(text)
-        assert estimated > 0
-        assert estimated == len(text) // 4
-
 
 class TestParallelSummarization:
     """Tests for parallel chunk summarization via asyncio."""
@@ -920,9 +923,7 @@ class TestParallelSummarization:
             msgs.append({"role": "user", "content": prefix + padding})
         return msgs
 
-    def test_multiple_chunks_use_acall(self) -> None:
-        """When there are multiple chunks, summarize_messages should use
-        llm.acall (parallel) instead of llm.call (sequential)."""
+    def test_each_chunk_is_summarized_in_its_own_request(self) -> None:
         messages = self._make_messages_for_n_chunks(3)
 
         mock_llm = MagicMock()
@@ -939,15 +940,19 @@ class TestParallelSummarization:
             messages=messages,
             llm=mock_llm,
             callbacks=[],
-
         )
 
-        # acall should have been awaited once per chunk
-        assert mock_llm.acall.await_count == 3
-        mock_llm.call.assert_not_called()
+        requests = [call.args[0][1]["content"] for call in mock_llm.acall.await_args_list]
+        assert [re.findall(r"msg-\d", request) for request in requests] == [
+            ["msg-0"],
+            ["msg-1"],
+            ["msg-2"],
+        ]
+        assert messages[0]["content"].startswith(
+            "<summary>\nSummary chunk 1\n\nSummary chunk 2\n\nSummary chunk 3\n</summary>"
+        )
 
-    def test_single_chunk_uses_one_coroutine(self) -> None:
-        """One chunk still goes through _summarize_all."""
+    def test_short_conversation_is_summarized_in_one_request(self) -> None:
         messages: list[dict[str, Any]] = [
             {"role": "user", "content": "Short message"},
             {"role": "assistant", "content": "Short reply"},
@@ -961,10 +966,12 @@ class TestParallelSummarization:
             messages=messages,
             llm=mock_llm,
             callbacks=[],
-
         )
 
-        mock_llm.acall.assert_awaited_once()
+        requests = [call.args[0][1]["content"] for call in mock_llm.acall.await_args_list]
+        assert len(requests) == 1
+        assert "[USER]: Short message\n\n[ASSISTANT]: Short reply" in requests[0]
+        assert messages[0]["content"].startswith("<summary>\nShort summary\n</summary>")
 
     def test_parallel_results_preserve_order(self) -> None:
         """Summaries must appear in the same order as the original chunks,
@@ -1001,79 +1008,46 @@ class TestParallelSummarization:
         pos_c = summary_content.index("Summary-C")
         assert pos_a < pos_b < pos_c
 
-    def test_summarize_all_returns_ordered_results(self) -> None:
-        """Direct test of _summarize_all."""
-        chunk_a: list[dict[str, Any]] = [{"role": "user", "content": "Chunk A"}]
-        chunk_b: list[dict[str, Any]] = [{"role": "user", "content": "Chunk B"}]
+    def test_overflowing_chunks_are_resplit_until_the_model_accepts_them(
+        self,
+    ) -> None:
+        """A model whose real window is tighter than the token estimate still
+        receives every character, in requests small enough for it to accept."""
+        messages: list[dict[str, Any]] = [{"role": "user", "content": "7" * 400}]
+
+        async def model_accepting_250_sevens(prompt: Any, **kwargs: Any) -> str:
+            sevens = prompt[1]["content"].count("7")
+            if sevens > 250:
+                raise LLMContextLengthExceededError("context length exceeded")
+            return f"<summary>{sevens} sevens</summary>"
 
         mock_llm = MagicMock()
-        mock_llm.acall = AsyncMock(
-            side_effect=[
-                "<summary>Result A</summary>",
-                "<summary>Result B</summary>",
-            ]
+        mock_llm.get_context_window_size.return_value = 100
+        mock_llm.acall = model_accepting_250_sevens
+
+        summarize_messages(
+            messages=messages,
+            llm=mock_llm,
+            callbacks=[],
+            verbose=False,
         )
 
-        summarizer = SummarizeMessages()
-        summarizer.llm = mock_llm
-        summarizer.callbacks = []
-        results = summarizer._summarize_all(
-            chunks=[chunk_a, chunk_b], char_level_index=0
+        assert messages[0]["content"].startswith(
+            "<summary>\n226 sevens\n\n59 sevens\n\n115 sevens\n</summary>"
         )
 
-        assert results == ["Result A", "Result B"]
-
-    def test_summarize_all_retries_after_context_length_error(self) -> None:
-        """A chunk that overflows context is retried after tighter token estimation."""
-        chunk: list[dict[str, Any]] = [{"role": "user", "content": "x" * 800}]
+    def test_chunk_the_model_never_accepts_raises_and_keeps_history(self) -> None:
+        messages: list[dict[str, Any]] = [{"role": "user", "content": "7" * 400}]
 
         mock_llm = MagicMock()
-        mock_llm.get_context_window_size.return_value = 100_000
+        mock_llm.get_context_window_size.return_value = 100
         mock_llm.acall = AsyncMock(
-            side_effect=[
-                LLMContextLengthExceededError("context length exceeded"),
-                "<summary>Recovered summary</summary>",
-            ]
+            side_effect=LLMContextLengthExceededError("context length exceeded")
         )
 
-        summarizer = SummarizeMessages()
-        summarizer.llm = mock_llm
-        summarizer.callbacks = []
-        summarizer.verbose = False
-
-        results = summarizer._summarize_all(chunks=[chunk], char_level_index=0)
-
-        assert results == ["Recovered summary"]
-        assert mock_llm.acall.await_count == 2
-
-    def test_summarize_messages_retries_each_char_per_token_level(self) -> None:
-        """Context errors step through chunk levels 0, 1, and 2 before succeeding."""
-        messages: list[dict[str, Any]] = [{"role": "user", "content": "x" * 800}]
-        recorded_levels: list[int] = []
-        original_chunk = SummarizeMessages._chunk_messages
-
-        def tracking_chunk(
-            self: SummarizeMessages,
-            chunk_messages: list[dict[str, Any]],
-            max_tokens: int,
-            char_level_index: int = 0,
-        ) -> list[list[dict[str, Any]]]:
-            recorded_levels.append(char_level_index)
-            return original_chunk(
-                self, chunk_messages, max_tokens, char_level_index=char_level_index
-            )
-
-        mock_llm = MagicMock()
-        mock_llm.get_context_window_size.return_value = 100_000
-        mock_llm.acall = AsyncMock(
-            side_effect=[
-                LLMContextLengthExceededError("context length exceeded"),
-                LLMContextLengthExceededError("context length exceeded"),
-                "<summary>Final summary</summary>",
-            ]
-        )
-
-        with patch.object(SummarizeMessages, "_chunk_messages", tracking_chunk):
+        with pytest.raises(
+            LLMContextLengthExceededError, match="still exceeds the context window"
+        ):
             summarize_messages(
                 messages=messages,
                 llm=mock_llm,
@@ -1081,15 +1055,10 @@ class TestParallelSummarization:
                 verbose=False,
             )
 
-        assert len(messages) == 1
-        assert "Final summary" in messages[0]["content"]
-        assert recorded_levels == [0, 1, 2]
-        assert mock_llm.acall.await_count == 3
+        assert messages == [{"role": "user", "content": "7" * 400}]
 
-    @patch("crewai.utilities.agent_utils.is_inside_event_loop", return_value=True)
-    def test_works_inside_existing_event_loop(self, _mock_loop: Any) -> None:
-        """When called from inside a running event loop (e.g. a Flow),
-        the ThreadPoolExecutor fallback should still work."""
+    def test_works_inside_existing_event_loop(self) -> None:
+        """Called from a running event loop (e.g. a Flow), it still summarizes."""
         messages = self._make_messages_for_n_chunks(2)
 
         mock_llm = MagicMock()
@@ -1101,16 +1070,18 @@ class TestParallelSummarization:
             ]
         )
 
-        summarize_messages(
-            messages=messages,
-            llm=mock_llm,
-            callbacks=[],
+        async def inside_a_running_loop() -> None:
+            summarize_messages(
+                messages=messages,
+                llm=mock_llm,
+                callbacks=[],
+            )
 
+        asyncio.run(inside_a_running_loop())
+
+        assert messages[0]["content"].startswith(
+            "<summary>\nFlow summary 1\n\nFlow summary 2\n</summary>"
         )
-
-        assert mock_llm.acall.await_count == 2
-        assert "Flow summary 1" in messages[-1]["content"]
-        assert "Flow summary 2" in messages[-1]["content"]
 
 
 def _build_long_conversation() -> list[dict[str, Any]]:
